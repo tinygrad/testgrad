@@ -1,2 +1,3 @@
 ScheduleItem = None
-def create_schedule_with_vars(s): pass
+def create_schedule_with_vars(s):
+  return [], {}
