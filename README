@@ -1,0 +1,8 @@
+The goal of testgrad is to take the frontend from tinygrad and render pure C that runs it.
+
+codegen and engine won't be copied over
+
+The tensor, UOp, graph rewrite, and rendering infra is good.
+
+
+
