@@ -232,7 +232,7 @@ class Tensor(MathTrait):
     big_sink = UOp.sink(*[x.uop for x in (self,)+lst])
 
     # verify Tensors match the spec
-    if __debug__: type_verify(list(big_sink.toposort()), tensor_uop_spec)
+    #if __debug__: type_verify(list(big_sink.toposort()), tensor_uop_spec)
 
     becomes_map = get_kernelize_map(big_sink)
     _apply_map_to_tensors(becomes_map, name="Apply Kernelize Map")

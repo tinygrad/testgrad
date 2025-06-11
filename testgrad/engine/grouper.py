@@ -1,4 +1,4 @@
-from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, resolve
+from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map
 from testgrad.helpers import prod, unwrap
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
@@ -44,31 +44,19 @@ def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
 
 view_left = merge_views+PatternMatcher([
   # view before elementwise and buffer ops
-  (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.LOAD, Ops.STORE, Ops.VALID}, name="e"),), name="view"),
+  (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.VALID}, name="e"),), name="view"),
    lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if view.st.size <= e.st.size else None),
   # push a non contiguous ShapeTracker through reduceop
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
 ])
 
-def to_contiguous_buffer(x:UOp):
-  # remove contiguous
-  buf = UOp.new_buffer(x.device, prod(x.shape), x.dtype)
-  return buf.store(x.src[0]).reshape(x.shape).load()
-
-def to_view_buffer(x:UOp, v:UOp):
-  # view before load
-  buf = UOp.new_buffer(x.device, prod(x.shape), x.dtype)
-  return buf.store(x).view(v.arg).load()
-
 to_buffers = merge_views+PatternMatcher([
   # replace CONTIGUOUS with a store to a buffer
-  (UPat(Ops.CONTIGUOUS, name="x"), to_contiguous_buffer),
-  # VIEW on LOAD moves before LOAD
-  (UPat(Ops.VIEW, src=(UPat(Ops.LOAD, name="l"),), name="v"), lambda v,l: l.replace(src=(l.src[0].view(v.arg),)+l.src[1:])),
+  (UPat(Ops.CONTIGUOUS, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
   # VIEW not on BUFFER or CONST needs to be a buffer
   # TODO: why is DEVICE here?
   (UPat(Ops.VIEW, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE} - GroupOp.Movement, name="x"),),
-        name="v"), to_view_buffer),
+        name="v"), lambda x,v: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x).view(v.arg)),
 ])
 
 def do_kernelize(x:UOp):
@@ -99,8 +87,8 @@ kernelize = PatternMatcher([
 @track_rewrites()
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   # NOTE: might need to insert some contiguous if there's reduces that would fork
-  sink = graph_rewrite(sink, view_left, name="move views")
-  sink = graph_rewrite(sink, to_buffers, name="add buffers")
-  sink = graph_rewrite(sink, kernelize, name="create kernels")
-  graph_rewrite(sink, PatternMatcher([]), name="output")
-  return {}
+  tensor_map = graph_rewrite_map(sink, view_left, name="move views")
+  tensor_map = graph_rewrite_map(tensor_map[sink], to_buffers, input_map=tensor_map, name="add buffers")
+  tensor_map = graph_rewrite_map(tensor_map[sink], kernelize, input_map=tensor_map, name="create kernels")
+  graph_rewrite(tensor_map[sink], PatternMatcher([]), name="output")
+  return tensor_map
