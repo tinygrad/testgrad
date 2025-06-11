@@ -1,6 +1,6 @@
 # basic self-contained tests of the external functionality of tinygrad
 import unittest, random
-from testgrad import Tensor, Context, Variable, TinyJit, dtypes, Device
+from testgrad import Tensor, Context, Variable, TinyJit, dtypes, Device, nn
 from testgrad.helpers import IMAGE, CI
 
 class TestTiny(unittest.TestCase):
@@ -90,7 +90,6 @@ class TestTiny(unittest.TestCase):
   # TODO: this is failing because of how swizzling rewrites the ShapeTracker of the final STORE
   @unittest.skipIf(IMAGE>0 or (CI and Device.DEFAULT == "DSP"), "failing because of make things that can't be images not images")
   def test_mnist(self):
-    from tinygrad import nn
     layers = [
       nn.Conv2d(1, 32, 5), Tensor.relu,
       nn.Conv2d(32, 32, 5), Tensor.relu,
