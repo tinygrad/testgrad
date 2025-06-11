@@ -4,5 +4,9 @@ codegen and engine won't be copied over
 
 The tensor, UOp, graph rewrite, and rendering infra is good.
 
+== takeaways to date ==
+
+-- symbolic should move from codegen to uop. uop should not import from codegen
+
 
 

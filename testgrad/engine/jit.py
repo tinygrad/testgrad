@@ -1,0 +1,1 @@
+def TinyJit(x): return x
