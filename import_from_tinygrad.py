@@ -12,9 +12,13 @@ FILES = ["dtype.py", "helpers.py", "gradient.py",
          # "runtime/support/elf.py"
          "renderer/__init__.py", "renderer/cstyle.py", "runtime/autogen/libc.py",
          "nn/__init__.py", "nn/optim.py", "nn/state.py", "nn/datasets.py",
-         "uop/__init__.py", "uop/ops.py", "uop/mathtraits.py", "uop/upat.py",
+         "uop/__init__.py",  "uop/mathtraits.py", "uop/upat.py",
+         # changing reduce here
+         #"uop/ops.py",
          "uop/spec.py", "uop/symbolic.py", "uop/transcendental.py",
-         "shape/shapetracker.py", "shape/view.py",
+         # changing reduce function here
+         #"shape/shapetracker.py",
+         "shape/view.py",
          "viz/serve.py", "viz/index.html", "viz/js/index.js", "viz/js/worker.js",
 ]
 src = pathlib.Path("../tinygrad/tinygrad")
