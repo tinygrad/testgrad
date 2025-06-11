@@ -132,8 +132,8 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
 
   @functools.cached_property
   def st(self) -> ShapeTracker|None:
-    # stores don't have a shape
-    if self.op is Ops.STORE: return None
+    # stores return shape of the buffer
+    if self.op is Ops.STORE: return self.src[0].st
 
     # VIEW and MovementOps define a new ShapeTracker from the arg
     if self.op is Ops.VIEW: return self.arg
