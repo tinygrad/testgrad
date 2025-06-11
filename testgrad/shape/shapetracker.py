@@ -7,6 +7,7 @@ from testgrad.helpers import merge_dicts, getenv
 from testgrad.shape.view import View, strides_for_shape, unravel
 from testgrad.dtype import dtypes
 from testgrad.uop.ops import UOp, Ops, graph_rewrite, Variable, sint, sint_to_uop, Context, PatternMatcher, UPat, GroupOp
+from testgrad.uop.symbolic import split_uop, symbolic_flat, uop_given_valid, simplify_valid
 
 # If a node overflow, its srcs need to be checked to see if this overflow is the result of an ALU operation,
 # or that the node simply inherits the dtype from srcs. Upcast is either `Ops.CAST`+`replace` or just `replace`.
@@ -23,7 +24,6 @@ pm_upcast = PatternMatcher([(UPat(GroupOp.ALU, dtype=dtypes.int, name="u"), hand
 
 @functools.cache
 def views_to_indexed_uops(views: tuple[View, ...], _idxs:Optional[tuple[UOp, ...]]=None) -> tuple[UOp, UOp]:
-  from testgrad.codegen.symbolic import symbolic_flat, uop_given_valid, simplify_valid
   idx, valid = views[-1].to_indexed_uops(_idxs)
   for view in reversed(views[0:-1]):
     view = view.minify()
@@ -38,7 +38,6 @@ def views_to_indexed_uops(views: tuple[View, ...], _idxs:Optional[tuple[UOp, ...
 
 @functools.cache
 def views_to_real_strides(views: tuple[View, ...], ignore_valid=False) -> tuple[Optional[sint], ...]:
-  from testgrad.codegen.symbolic import split_uop
   # NOTE: if a stride is not always valid, it will be None
   if len(views) == 1 and views[-1].mask is None: return views[-1].strides
   ret: list[Optional[sint]] = [None] * len(views[-1].shape)

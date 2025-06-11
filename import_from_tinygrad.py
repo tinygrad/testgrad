@@ -6,9 +6,9 @@ FILES = ["dtype.py", "helpers.py", "gradient.py", "device.py",
          # "tensor.py",
          "renderer/__init__.py", "runtime/ops_cpu.py",
          "nn/__init__.py", "nn/optim.py", "nn/state.py", "nn/datasets.py",
-         "uop/__init__.py", "uop/ops.py", "uop/mathtraits.py", "uop/upat.py", "uop/spec.py",
-         # "shape/shapetracker.py",
-         "shape/view.py"]
+         "uop/__init__.py", "uop/ops.py", "uop/mathtraits.py", "uop/upat.py",
+         "uop/spec.py", "uop/symbolic.py", "uop/transcendental.py",
+         "shape/shapetracker.py", "shape/view.py"]
 src = pathlib.Path("../tinygrad/tinygrad")
 dest = pathlib.Path("testgrad")
 
