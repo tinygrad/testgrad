@@ -2,8 +2,7 @@
 import pathlib
 
 FILES = ["dtype.py", "helpers.py", "gradient.py", "device.py",
-         "__init__.py",
-         # "tensor.py",
+         "__init__.py", "tensor.py",
          "renderer/__init__.py", "runtime/ops_cpu.py",
          "nn/__init__.py", "nn/optim.py", "nn/state.py", "nn/datasets.py",
          "uop/__init__.py", "uop/ops.py", "uop/mathtraits.py", "uop/upat.py",
