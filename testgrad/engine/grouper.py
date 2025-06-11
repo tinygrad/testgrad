@@ -1,5 +1,5 @@
 from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map
-from testgrad.helpers import prod, unwrap
+from testgrad.helpers import prod, unwrap, pluralize
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
 from dataclasses import dataclass
@@ -51,8 +51,8 @@ view_left = merge_views+PatternMatcher([
 ])
 
 to_buffers = merge_views+PatternMatcher([
-  # replace CONTIGUOUS with a store to a buffer
-  (UPat(Ops.CONTIGUOUS, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
+  # replace CONTIGUOUS/COPY with a store to a buffer
+  (UPat((Ops.CONTIGUOUS, Ops.COPY), name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
   # VIEW not on BUFFER or CONST needs to be a buffer
   # TODO: why is DEVICE here?
   (UPat(Ops.VIEW, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE} - GroupOp.Movement, name="x"),),
@@ -84,7 +84,7 @@ kernelize = PatternMatcher([
   (UPat(Ops.STORE, src=(UPat(), UPat(GroupOp.All - {Ops.KERNEL})), name="x"), do_kernelize),
 ])
 
-@track_rewrites()
+@track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   # NOTE: might need to insert some contiguous if there's reduces that would fork
   tensor_map = graph_rewrite_map(sink, view_left, name="move views")
