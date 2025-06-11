@@ -24,7 +24,7 @@ class _Device:
   def __get_canonicalized_item(self, ix:str) -> Compiled:
     assert ALLOW_DEVICE_USAGE or ix.split(":")[0] in ["DISK", "NPY", "PYTHON"], f"usage of device {ix} disallowed"
     x = ix.split(":")[0].lower()
-    ret = [cls for cname, cls in inspect.getmembers(importlib.import_module(f'tinygrad.runtime.ops_{x}')) \
+    ret = [cls for cname, cls in inspect.getmembers(importlib.import_module(f'testgrad.runtime.ops_{x}')) \
            if (cname.lower() == x + "device")][0](ix)
     if DEBUG >= 1: print(f"opened device {ix} from pid:{os.getpid()}")
     self._opened_devices.add(ix)
@@ -396,7 +396,7 @@ if __name__ == "__main__":
     try:
       _ = Device[device].device
       try:
-        from tinygrad import Tensor
+        from testgrad import Tensor
         with Context(CACHELEVEL=0): test = (Tensor([1,2,3], device=device) * 2).tolist()
         if test != [2,4,6]: raise ValueError(f"got {test} instead of [2, 4, 6]")
         result = colored("PASS", "green")

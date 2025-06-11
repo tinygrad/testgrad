@@ -6,7 +6,8 @@ The tensor, UOp, graph rewrite, and rendering infra is good.
 
 == takeaways to date ==
 
--- symbolic should move from codegen to uop. uop should not import from codegen
+* symbolic should move from codegen to uop. uop should not import from codegen (done)
+* "tinygrad" is hardcoded in device.py when it searches for ops
 
 
 

@@ -1,4 +1,5 @@
-from testgrad.uop.ops import UOp
+from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher
 
 def get_kernelize_map(big_sink:UOp) -> dict[UOp, UOp]:
-  pass
+  graph_rewrite(big_sink, PatternMatcher([]))
+  return {}
