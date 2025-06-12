@@ -62,7 +62,7 @@ to_buffers = merge_views+PatternMatcher([
 def do_kernelize(x:UOp):
   srcs = []
   def gate(y:UOp):
-    if y.op is Ops.ASSIGN:
+    if y.op is Ops.STORE:
       srcs.append(y)
       return False
     return True
@@ -73,11 +73,11 @@ def do_kernelize(x:UOp):
   bufs_replace = {}
   for ty in srcs:
     # TODO: lil helper in UOp for this
-    while ty.op is Ops.ASSIGN: ty = ty.src[0]
+    while ty.op is Ops.STORE: ty = ty.src[0]
     assert ty.op is Ops.BUFFER
     bufs_replace[ty] = UOp(Ops.DEFINE_GLOBAL, ty.dtype, arg=len(bufs_replace))
 
-  return x.src[0].assign(UOp(Ops.KERNEL, src=tuple(srcs), arg=Kernel(x.substitute(bufs_replace))))
+  return x.src[0].store(UOp(Ops.KERNEL, src=tuple(srcs), arg=Kernel(x.substitute(bufs_replace))))
 
 kernelize = PatternMatcher([
   # kernels come from STORE

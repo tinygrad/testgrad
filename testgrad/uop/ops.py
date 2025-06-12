@@ -368,7 +368,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
     if self.op is Ops.BUFFER: return self
     if self.op is Ops.MSELECT: return self.src[0].buf_uop.mselect(self.arg)
     if self.op is Ops.MSTACK: return UOp(Ops.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.src))
-    assert self.op is Ops.ASSIGN, f"must be ASSIGN {self.op}"
+    assert self.op is Ops.STORE, f"must be STORE {self.op}"
     return self.src[0]
   @property
   def buffer(self) -> Buffer|MultiBuffer:
