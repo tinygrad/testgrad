@@ -10,3 +10,6 @@ The tensor, UOp, graph rewrite, and rendering infra is good.
 * "tinygrad" is hardcoded in device.py when it searches for ops
 * remove CPU graph
 * split libc import line
+
+* switch from ASSIGN -> STORE everywhere. delete ASSIGN
+* switch order of inputs to BUFFER, should be DEVICE then (optional) unique
