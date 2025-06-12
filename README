@@ -13,3 +13,4 @@ The tensor, UOp, graph rewrite, and rendering infra is good.
 
 * switch from ASSIGN -> STORE everywhere. delete ASSIGN
 * switch order of inputs to BUFFER, should be DEVICE then (optional) unique
+* replace get_kernel with get_program returning ProgramSpec

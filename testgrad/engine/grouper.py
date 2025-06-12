@@ -83,7 +83,7 @@ def do_kernelize(x:UOp):
     assert ty.op is Ops.BUFFER
     bufs_replace[ty] = UOp(Ops.DEFINE_GLOBAL, ty.dtype, arg=len(bufs_replace))
 
-  return x.src[0].store(UOp(Ops.KERNEL, src=tuple(srcs), arg=Kernel(x.substitute(bufs_replace))))
+  return x.src[0].store(UOp(Ops.KERNEL, src=tuple(srcs), arg=Kernel(x.substitute(bufs_replace).sink())))
 
 kernelize = PatternMatcher([
   # kernels come from STORE
