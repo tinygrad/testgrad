@@ -351,7 +351,8 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
   # *** uop Buffer stuff ***
 
   @staticmethod
-  def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType): return UOp(Ops.BUFFER, dtype, (UOp.unique(), UOp(Ops.DEVICE, arg=device)), size)
+  def new_buffer(device:str|tuple[str, ...], size:int, dtype:DType, unique=True):
+    return UOp(Ops.BUFFER, dtype, (UOp(Ops.DEVICE, arg=device),)+((UOp.unique(),) if unique else ()), size)
   @property
   def device(self) -> str|tuple[str, ...]: return cast(str|tuple[str, ...], unwrap(self._device))
   @functools.cached_property
@@ -361,7 +362,8 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
       assert isinstance(self.src[0].device, tuple), "mselect must be on tuple device"
       return self.src[0].device[self.arg]
     if self.op is Ops.MSTACK: return tuple(cast(str, x.device) for x in self.src)
-    if self.op in {Ops.COPY, Ops.BUFFER, Ops.ALLREDUCE}: return self.src[1].device
+    if self.op is Ops.BUFFER: return self.src[0].device
+    if self.op in {Ops.COPY, Ops.ALLREDUCE}: return self.src[1].device
     return dsrcs[0]._device if len(dsrcs:=[x for x in self.src if x._device is not None]) != 0 else None
   @property
   def buf_uop(self) -> UOp:

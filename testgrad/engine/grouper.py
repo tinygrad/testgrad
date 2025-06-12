@@ -1,4 +1,4 @@
-from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map
+from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map, _substitute
 from testgrad.helpers import prod, unwrap, pluralize
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
@@ -50,13 +50,19 @@ view_left = merge_views+PatternMatcher([
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
 ])
 
+fix_stores = PatternMatcher([
+  # remove STOREs that don't target a BUFFER or another STORE
+  (UPat(Ops.STORE, src=(UPat(GroupOp.All-{Ops.BUFFER, Ops.STORE}), UPat.var('x'))), lambda x: x),
+])
+
 to_buffers = merge_views+PatternMatcher([
   # replace CONTIGUOUS/COPY with a store to a buffer
-  (UPat((Ops.CONTIGUOUS, Ops.COPY), name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
+  (UPat((Ops.CONTIGUOUS, Ops.COPY), name="x"), lambda x:
+   UOp.new_buffer(x.device, prod(x.shape), x.dtype, unique=False).store(x.src[0]).reshape(x.shape)),
   # VIEW not on BUFFER or CONST needs to be a buffer
   # TODO: why is DEVICE here?
   (UPat(Ops.VIEW, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE} - GroupOp.Movement, name="x"),),
-        name="v"), lambda x,v: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x).view(v.arg)),
+        name="v"), lambda x,v: UOp.new_buffer(x.device, prod(x.shape), x.dtype, unique=False).store(x).view(v.arg)),
 ])
 
 def do_kernelize(x:UOp):
@@ -87,8 +93,15 @@ kernelize = PatternMatcher([
 @track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   # NOTE: might need to insert some contiguous if there's reduces that would fork
-  tensor_map = graph_rewrite_map(sink, view_left, name="move views")
+  tensor_map = graph_rewrite_map(sink, view_left+fix_stores, name="move views")
   tensor_map = graph_rewrite_map(tensor_map[sink], to_buffers, input_map=tensor_map, name="add buffers")
   tensor_map = graph_rewrite_map(tensor_map[sink], kernelize, input_map=tensor_map, name="create kernels")
+
+  # make buffers unique, allowing a chance for them to dedup based on their inputs
+  unique_buffers = {}
+  for u in tensor_map[sink].toposort():
+    if u.op is Ops.BUFFER and len(u.src) == 1: unique_buffers[u] = u.replace(src=u.src+(UOp.unique(),))
+  tensor_map = graph_rewrite_map(tensor_map[sink], _substitute, ctx=unique_buffers, input_map=tensor_map, name="make unique buffers")
+
   graph_rewrite(tensor_map[sink], PatternMatcher([]), name="output")
   return tensor_map
