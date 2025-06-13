@@ -12,6 +12,7 @@ FILES = ["dtype.py", "helpers.py",
          #"runtime/ops_cpu.py",
          "runtime/ops_python.py",
          "runtime/ops_npy.py",
+         "runtime/ops_disk.py",
          # split libc import line
          # "runtime/support/elf.py"
          "renderer/__init__.py",
