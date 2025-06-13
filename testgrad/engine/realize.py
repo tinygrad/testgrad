@@ -15,7 +15,7 @@ def get_program(renderer:Renderer, ast:UOp) -> ProgramSpec:
   linearized = full_rewrite(ast, renderer)
   prg_cnt += 1
   linearized = []
-  return ProgramSpec(f"test{prg_cnt}", renderer.render(linearized), ast.device, ast)
+  return ProgramSpec(f"test{prg_cnt}", renderer.render(linearized), renderer.device, ast)
 
 # **************** Runners ****************
 

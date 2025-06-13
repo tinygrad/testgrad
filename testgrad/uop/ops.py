@@ -146,6 +146,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
     # BUFFER/BUFFER_VIEW and KERNEL only have a size
     if self.op in {Ops.BUFFER, Ops.BUFFER_VIEW}: return ShapeTracker.from_shape((self.size,))
     if self.op is Ops.KERNEL: return ShapeTracker.from_shape((self.arg.ast.size,))
+    if self.op is Ops.DEFINE_GLOBAL: return ShapeTracker.from_shape((self.dtype.size,))
 
     # otherwise we get the shape from sources
     if not (src_sts := [x.st for x in self.src if x.st is not None]): return None
@@ -156,6 +157,8 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
         shape = src_sts[0].shape
         if self.dtype.itemsize != (input_sz:=self.src[0].dtype.itemsize): shape = shape[:-1]+((shape[-1]*input_sz) // self.dtype.itemsize,)
       case Ops.REDUCE_AXIS | Ops.WMMA: shape = src_sts[0].reduce(self.axis_arg)
+      # requires end ones reduce
+      case Ops.REDUCE: shape = src_sts[0].shape[:-(len(self.src)-1)]
       case _: shape = src_sts[0].shape
     return ShapeTracker.from_shape(shape)
 

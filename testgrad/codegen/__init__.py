@@ -6,7 +6,7 @@ from testgrad.uop.ops import PatternMatcher, graph_rewrite, UOp
 from testgrad.renderer import Renderer
 
 # import all pattern matchers here
-#from testgrad.codegen.lowerer import pm_quant, pm_lowerer, get_index
+from testgrad.codegen.lowerer import LowererContext, pm_lowerer
 from testgrad.uop.symbolic import sym, symbolic_simple, gep_pushing
 from testgrad.codegen.expander import migrate_indexing, pm_store_ignore, pm_move_ignore, pm_delete_ignore, expander
 from testgrad.codegen.devectorizer import load_store_folding, load_store_indexing, devectorize, \
@@ -39,7 +39,7 @@ def _get_rewrites_for_renderer(opts:Renderer, linearizer:bool, _QUANTIZE, _DEVEC
   # ** lowerer (rewrite_shapetracker_with_index) **
   ret: list[RewriteStep] = []
   #if _QUANTIZE and opts.device in {"CPU", "DSP"}: ret.append(RewriteStep(pm_quant, name="quantize"))
-  #ret.append(RewriteStep(pm_lowerer, lambda ast: get_index(ast, opts), name="lowerer"))
+  ret.append(RewriteStep(pm_lowerer, lambda _: LowererContext(), name="lowerer", bottom_up=True))
 
   # ** expander (expand_rewrite) **
   ret.append(RewriteStep(sym+migrate_indexing, name="initial symbolic"))
