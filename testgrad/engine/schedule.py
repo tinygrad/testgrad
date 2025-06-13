@@ -1,7 +1,7 @@
 from typing import cast
 from collections import deque, defaultdict
 from dataclasses import dataclass, field
-from testgrad.helpers import Metadata
+from testgrad.helpers import Metadata, merge_dicts
 from testgrad.device import Buffer
 from testgrad.uop.ops import UOp, Variable, Ops
 
@@ -24,21 +24,24 @@ def create_schedule_with_vars(sched_sink:UOp):
       if s.op is Ops.STORE:
         children[s.src[1]].append(k)
         in_degree[k] += 1
-      elif s.op is Ops.BUFFER:
+      elif s.op in {Ops.BUFFER, Ops.BIND}:
         pass  # a BUFFER is already realized, nothing to do here
       else:
-        raise RuntimeError(f"input to kernel must be STORE or BUFFER, not {s.op}")
+        raise RuntimeError(f"input to kernel must be STORE, BUFFER, or BIND, not {s.op}")
 
   # linearize KERNEL UOps into ScheduleItems in BFS order
   queue = deque(k for k,v in in_degree.items() if v == 0)
   schedule: list[ScheduleItem] = []
   var_vals: dict[Variable, int] = {}
+  bound_vars_dicts = []
   while queue:
     k = queue.popleft()
-    ubufs = tuple(s.buf_uop.buffer for s in k.src)
+    ubufs = tuple(s.buf_uop.buffer for s in k.src if s.op is not Ops.BIND)
+    bound_vars = dict([s.unbind() for s in k.src if s.op is Ops.BIND])
+    if len(bound_vars): bound_vars_dicts.append(bound_vars)
     schedule.append(ScheduleItem(k.arg.ast, cast(tuple[Buffer, ...], ubufs)))
     for x in children[k]:
       in_degree[x] -= 1
       if in_degree[x] == 0: queue.append(x)
 
-  return schedule, var_vals
+  return schedule, merge_dicts(bound_vars_dicts)

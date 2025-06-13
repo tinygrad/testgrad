@@ -1,5 +1,5 @@
 from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map, _substitute, KernelInfo
-from testgrad.helpers import prod, unwrap, pluralize
+from testgrad.helpers import prod, unwrap, pluralize, merge_dicts
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
 from dataclasses import dataclass
@@ -60,11 +60,18 @@ fix_stores = PatternMatcher([
 
 def do_kernelize(x:UOp):
   const_replace = {}
+  view_replace = {}
+  unbound_dicts = []
   srcs = []
   def gate(y:UOp):
     if y.op in {Ops.STORE, Ops.BUFFER}:
       srcs.append(y)
       return False
+    if y.op is Ops.VIEW:
+      unbound_view, unbound_dict = y.arg.unbind()
+      if unbound_view != y.arg:
+        unbound_dicts.append(unbound_dict)
+        view_replace[y] = y.replace(arg=unbound_view)
     # TODO: should this be CONST(VIEW(DEVICE)) and not just CONST(DEVICE)?
     if y.op is Ops.CONST and len(y.src): const_replace[y] = y.replace(src=())
     return True
@@ -76,13 +83,16 @@ def do_kernelize(x:UOp):
     dg = UOp(Ops.DEFINE_GLOBAL, y.dtype.ptr(y.buffer.size), arg=len(bufs_replace))
     bufs_replace[y] = dg.view(ShapeTracker.from_shape((y.buffer.size,))) if i != 0 else dg
   bufs_replace.update(const_replace)
+  bufs_replace.update(view_replace)
+  if len(unbound_dicts):
+    for k,v in merge_dicts(unbound_dicts).items(): srcs.append(k.bind(v))
 
   # this is a normal kernel
   if len(srcs) == 2 and srcs[0].device != srcs[1].device:
     kast = UOp(Ops.COPY)
   else:
     info = KernelInfo(name='k'+'_'.join([str(s) for s in x.src[1].shape]))
-    kast = graph_rewrite(x, _substitute+merge_views, ctx=bufs_replace, name="fixup kernel").sink(arg=info)
+    kast = graph_rewrite(x, _substitute+merge_views, ctx=bufs_replace, name="fixup kernel", bottom_up=True).sink(arg=info)
   return x.src[0].store(UOp(Ops.KERNEL, src=tuple(srcs), arg=Kernel(kast)))
 
 kernelize = PatternMatcher([
