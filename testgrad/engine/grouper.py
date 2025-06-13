@@ -1,5 +1,5 @@
 from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map, _substitute, KernelInfo
-from testgrad.helpers import prod, unwrap, pluralize, merge_dicts
+from testgrad.helpers import prod, unwrap, pluralize, merge_dicts, dedup
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
 from dataclasses import dataclass
@@ -56,6 +56,8 @@ view_left = merge_views+remove_views+PatternMatcher([
 fix_stores = PatternMatcher([
   # remove STOREs that don't target a BUFFER or another STORE
   (UPat(Ops.STORE, src=(UPat(GroupOp.All-{Ops.BUFFER, Ops.STORE}), UPat.var('x'))), lambda x: x),
+  # remove DETACH
+  (UPat(Ops.DETACH, name="x"), lambda x: x.src[0])
 ])
 
 def do_kernelize(x:UOp):
@@ -73,14 +75,17 @@ def do_kernelize(x:UOp):
         unbound_dicts.append(unbound_dict)
         view_replace[y] = y.replace(arg=unbound_view)
     # TODO: should this be CONST(VIEW(DEVICE)) and not just CONST(DEVICE)?
-    if y.op is Ops.CONST and len(y.src): const_replace[y] = y.replace(src=())
+    # yea, CONST should just have shape () and this should be removed
+    if y.op is Ops.CONST and len(y.src): const_replace[y] = y.replace(src=()).view(ShapeTracker.from_shape(y.shape))
     return True
   srcs.append(x.src[0])
   x.src[1].toposort(gate)
+  srcs = dedup(srcs)  # 0 should always stay at 0
 
   bufs_replace = {}
   for i,y in enumerate(srcs):
     dg = UOp(Ops.DEFINE_GLOBAL, y.dtype.ptr(y.buffer.size), arg=len(bufs_replace))
+    assert y not in bufs_replace
     bufs_replace[y] = dg.view(ShapeTracker.from_shape((y.buffer.size,))) if i != 0 else dg
   bufs_replace.update(const_replace)
   bufs_replace.update(view_replace)
@@ -111,12 +116,14 @@ add_gbarrier = PatternMatcher([
   (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=1).gbarrier() if x.tag is None else None),
   # merge GBARRIERs
   (UPat(Ops.GBARRIER, src=(UPat(Ops.GBARRIER, name="x"),)), lambda x: x),
+  # add GBARRIER on all SINK bases
+  (UPat(Ops.SINK, name="s"), lambda s: s.replace(src=tuple([x.base.gbarrier().view(x.st) for x in s.src]), tag=1) if s.tag is None else None),
 ])
 
 gbarrier_to_buffer = PatternMatcher([
   (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
   # remove tags from COPY
-  (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
+  (UPat((Ops.COPY, Ops.SINK), name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
 ])
 
 @track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
