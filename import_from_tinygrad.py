@@ -4,7 +4,9 @@ import pathlib
 FILES = ["dtype.py", "helpers.py", "gradient.py",
          # tinygrad hardcoded
          #"device.py",
-         "__init__.py", "tensor.py",
+         "__init__.py",
+         # tensor replaces assign with store
+         #"tensor.py",
          # remove CPU graph
          #"runtime/ops_cpu.py",
          "runtime/ops_python.py",
