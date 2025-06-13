@@ -20,6 +20,11 @@ FILES = ["dtype.py", "helpers.py", "gradient.py",
          #"shape/shapetracker.py",
          "shape/view.py",
          "viz/serve.py", "viz/index.html", "viz/js/index.js", "viz/js/worker.js",
+         # okay parts of codegen
+         # lowerer removed
+         #"codegen/__init__.py",
+         "codegen/devectorizer.py", "codegen/expander.py",
+         "codegen/linearize.py",
 ]
 src = pathlib.Path("../tinygrad/tinygrad")
 dest = pathlib.Path("testgrad")

@@ -232,7 +232,7 @@ class Tensor(MathTrait):
     big_sink = UOp.sink(*[x.uop for x in (self,)+lst])
 
     # verify Tensors match the spec
-    #if __debug__: type_verify(list(big_sink.toposort()), tensor_uop_spec)
+    if __debug__: type_verify(list(big_sink.toposort()), tensor_uop_spec)
 
     becomes_map = get_kernelize_map(big_sink)
     _apply_map_to_tensors(becomes_map, name="Apply Kernelize Map")
@@ -249,7 +249,7 @@ class Tensor(MathTrait):
     sink = UOp.sink(*[x.uop for x in (self,)+lst])
 
     # remove all ASSIGNs, after scheduling, the tensors are just buffers
-    remove_assign_map = {u:u.buf_uop for u in sink.toposort() if u.op is Ops.STORE}
+    remove_assign_map = {u:u.buf_uop for u in sink.toposort() if u.op is Ops.ASSIGN}
     _apply_map_to_tensors(remove_assign_map, name="Remove Assigns")
 
     # create the schedule
@@ -290,7 +290,7 @@ class Tensor(MathTrait):
     assert self.shape == x.shape, f"assign shape mismatch {self.shape} != {x.shape}"
     assert self.device == x.device, f"assign device mismatch {self.device} != {x.device}"
     assert self.dtype == x.dtype, f"assign dtype mismatch {self.dtype} != {x.dtype}"
-    self.uop = self.uop.store(x.uop)
+    self.uop = self.uop.assign(x.uop)
     return self
 
   def detach(self) -> Tensor:
@@ -1143,19 +1143,19 @@ class Tensor(MathTrait):
           boundary = [index, index+1] if index >= 0 else [index+size, index+size+1]
         case slice():
           if index.step == 0: raise ValueError(f"{index=} cannot have 0 as step")
-          if all(s is None for s in (index.start,index.stop,index.step)):
-            boundary, stride = [0, size], 1
-          elif all(isinstance(s, int) or s is None for s in (index.start,index.stop,index.step)):
+          start, stop = 0 if index.start is None else index.start, size if index.stop is None else index.stop
+          step = 1 if index.step is None else index.step
+          boundary, stride = [start, stop], step
+          if all(isinstance(s, int) for s in (start,stop,step)):
             # handle int slicing
             *boundary, stride = index.indices(cast(SupportsIndex, size))
             if stride * (boundary[1] - boundary[0]) < 0: boundary = [0, 0]
             elif stride < 0: boundary = [boundary[1] + 1, boundary[0] + 1]
             # update size for slice
             size = ceildiv((boundary[1] - boundary[0]), abs(stride))
-          elif index.step is None and all(isinstance(s,(int,UOp))for s in (index.start,index.stop)) and resolve((index.stop-index.start) > 0, False):
+          elif (step == 1) and isinstance(step, int) and all(isinstance(s,(int,UOp)) for s in (start, stop)) and resolve((stop-start) > 0, False):
             # simple symbolic slice
-            boundary = [index.start, index.stop]
-            size = (index.stop - index.start).ssimplify()
+            size = cast(UOp|int, cast(UOp, (stop - start)).ssimplify())
           else: raise TypeError(f"slice {index=} is not supported")
         case None: pass # do nothing
         case _: raise IndexError(f"{type(index).__name__} indexing is not supported")

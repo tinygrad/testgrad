@@ -1,15 +1,20 @@
 from typing import Optional, cast, Generator
 from dataclasses import dataclass, replace, field
 import time, pprint
-from testgrad.uop.ops import Variable, UPat, Ops, PatternMatcher, sym_infer, UOp
+from testgrad.uop.ops import Variable, UPat, Ops, PatternMatcher, sym_infer, UOp, track_rewrites
 from testgrad.renderer import Estimates, ProgramSpec, Renderer
 from testgrad.engine.schedule import ScheduleItem
 from testgrad.helpers import colored, GlobalCounters, DEBUG, time_to_str, TRACEMETA, ansilen, all_same, Metadata, BEAM, NOOPT, DEVECTORIZE
 from testgrad.device import Buffer, Device
+from testgrad.codegen import full_rewrite
 
+prg_cnt = 0
+@track_rewrites(named=True)
 def get_program(renderer:Renderer, ast:UOp) -> ProgramSpec:
-  print(ast)
-  return ProgramSpec()
+  global prg_cnt
+  linearized = full_rewrite(ast, renderer)
+  prg_cnt += 1
+  return ProgramSpec(f"test{prg_cnt}", renderer.render(linearized), ast.device, ast)
 
 # **************** Runners ****************
 
