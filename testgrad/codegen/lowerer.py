@@ -20,7 +20,7 @@ def add_reduce_indexing(ctx:LowererContext, red:UOp):
   reduce_range = [UOp.range(dtypes.int, s, ctx.range_number+i) for i,s in enumerate(more_shape)]
   lc = LowererContext(ctx.current_range+reduce_range, ctx.range_number+len(more_shape))
   from testgrad.codegen.lowerer import pm_lowerer  # TODO: better way to do this?
-  ret = graph_rewrite(red.src[0], pm_lowerer, lc)
+  ret = graph_rewrite(red.src[0], pm_lowerer, lc, name="subreduce", bottom_up=True)
   ctx.range_number = lc.range_number
   return ret.reduce(*reduce_range, arg=red.arg[0])
 
