@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from testgrad.dtype import dtypes
 from testgrad.uop.ops import PatternMatcher, UPat, Ops, UOp, graph_rewrite
+from testgrad.shape.shapetracker import ShapeTracker
 
 @dataclass
 class LowererContext:
@@ -8,7 +9,8 @@ class LowererContext:
   range_number: int = 0
 
 def add_store_indexing(ctx:LowererContext, store:UOp):
-  st = store.src[1].st
+  # this is always contiguous
+  st = ShapeTracker.from_shape(store.src[1].shape)
   # create the output range
   ctx.current_range = [UOp.range(dtypes.int, s, i) for i,s in enumerate(st.shape)]
   ctx.range_number = len(ctx.current_range)
