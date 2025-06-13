@@ -369,7 +369,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
     return dsrcs[0]._device if len(dsrcs:=[x for x in self.src if x._device is not None]) != 0 else None
   @property
   def buf_uop(self) -> UOp:
-    if self.op is Ops.BUFFER: return self
+    if self.op in {Ops.BUFFER, Ops.BUFFER_VIEW}: return self
     if self.op is Ops.MSELECT: return self.src[0].buf_uop.mselect(self.arg)
     if self.op is Ops.MSTACK: return UOp(Ops.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.src))
     assert self.op is Ops.STORE, f"must be STORE {self.op}"
@@ -391,6 +391,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
       return ret
     # TODO: why didn't ASSIGN have to be here?
     if self.op is Ops.STORE: return self.src[0].buffer
+    if self.op is Ops.BUFFER_VIEW: return self.src[0].buffer.view(self.arg[0], self.dtype, self.arg[1])
     assert self.op is Ops.BUFFER, f"must be BUFFER {self.op}"
     if (cret:=buffers.get(self)) is not None: return cret
     rdtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base

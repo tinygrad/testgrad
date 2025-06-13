@@ -18,11 +18,6 @@ merge_views = PatternMatcher([
   (UPat(GroupOp.Movement, src=(UPat.var("x"),), name="mop"), lambda mop,x: x.base.view(mop.st)),
 ])
 
-remove_views = PatternMatcher([
-  # remove NOOP views
-  (UPat.var("x").view(name="view"), lambda x,view: x if x.st is not None and view.st.contiguous and view.shape == x.shape else None),
-])
-
 # change reduceop axes and input ShapeTrackers, view gets replaced with a reshape.
 # src->r->view  -->   src->view->r
 def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
@@ -45,7 +40,9 @@ def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
   return UOp(Ops.REDUCE_AXIS, r.dtype, (src.view(input_st + ShapeTracker(tuple(nv))),),
              (r.arg[0], tuple(range(len(view.shape), len(view.shape) + len(r.axis_arg)))))
 
-view_left = merge_views+remove_views+PatternMatcher([
+view_left = merge_views+PatternMatcher([
+  # remove NOOP views
+  (UPat.var("x").view(name="view"), lambda x,view: x if x.st is not None and view.st.contiguous and view.shape == x.shape else None),
   # view before elementwise and buffer ops
   (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.VALID}, name="e"),), name="view"),
    lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if view.st.size <= e.st.size else None),
@@ -66,7 +63,7 @@ def do_kernelize(x:UOp):
   unbound_dicts = []
   srcs = []
   def gate(y:UOp):
-    if y.op in {Ops.STORE, Ops.BUFFER}:
+    if y.op in {Ops.STORE, Ops.BUFFER, Ops.BUFFER_VIEW}:
       srcs.append(y)
       return False
     if y.op is Ops.VIEW:
@@ -105,19 +102,27 @@ kernelize = PatternMatcher([
   (UPat(Ops.STORE, src=(UPat(), UPat(GroupOp.All - {Ops.KERNEL})), name="x"), do_kernelize),
 ])
 
+def to_buffer_view(v:UOp):
+  if len(v.arg.views) > 1 or not ShapeTracker.from_shape(v.shape, v.arg.views[0].strides).contiguous: return None
+  return UOp(Ops.BUFFER_VIEW, v.dtype, (v.src[0],), (v.arg.size, v.arg.views[0].offset))
+
 add_gbarrier = PatternMatcher([
+  # add GBARRIER on all SINK bases (with a tag)
+  (UPat(Ops.SINK, name="s"), lambda s: s.replace(src=tuple([x.base.gbarrier().view(x.st) for x in s.src]), tag=1) if s.tag is None else None),
   # replace CONTIGUOUS with GBARRIER (should be done in tensor.py?)
   (UPat(Ops.CONTIGUOUS, name="x"), lambda x: x.src[0].gbarrier()),
-  # add GBARRIER before VIEW and COPY
-  (UPat((Ops.VIEW, Ops.COPY), src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE, Ops.GBARRIER} - GroupOp.Movement,
-                                        name="x"),), name="v"), lambda x,v: v.replace(src=(x.gbarrier(),))),
-
+  # add GBARRIER before VIEW
+  (UPat(Ops.VIEW, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE, Ops.GBARRIER, Ops.BUFFER_VIEW} - GroupOp.Movement,
+                            name="x"),), name="v"), lambda x,v: v.replace(src=(x.gbarrier(),))),
+  # add GBARRIER before COPY, unless it's a BUFFER or GBARRIER
+  (UPat(Ops.COPY, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.GBARRIER, Ops.BUFFER_VIEW}, name="x"), UPat(Ops.DEVICE, name="d")), name="v"),
+    lambda x,v,d: v.replace(src=(x.gbarrier(), d))),
   # add GBARRIER after COPY (and tag the COPY to not repeat)
   (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=1).gbarrier() if x.tag is None else None),
   # merge GBARRIERs
   (UPat(Ops.GBARRIER, src=(UPat(Ops.GBARRIER, name="x"),)), lambda x: x),
-  # add GBARRIER on all SINK bases
-  (UPat(Ops.SINK, name="s"), lambda s: s.replace(src=tuple([x.base.gbarrier().view(x.st) for x in s.src]), tag=1) if s.tag is None else None),
+  # some GBARRIERs can be BUFFER_VIEW
+  (UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
 ])
 
 gbarrier_to_buffer = PatternMatcher([

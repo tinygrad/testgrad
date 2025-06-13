@@ -24,7 +24,7 @@ def create_schedule_with_vars(sched_sink:UOp):
       if s.op is Ops.STORE:
         children[s.src[1]].append(k)
         in_degree[k] += 1
-      elif s.op in {Ops.BUFFER, Ops.BIND}:
+      elif s.op in {Ops.BUFFER, Ops.BIND, Ops.BUFFER_VIEW}:
         pass  # a BUFFER is already realized, nothing to do here
       else:
         raise RuntimeError(f"input to kernel must be STORE, BUFFER, or BIND, not {s.op}")
