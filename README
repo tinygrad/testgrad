@@ -12,6 +12,6 @@ The tensor, UOp, graph rewrite, and rendering infra is good.
 * split libc import line
 
 * switch from ASSIGN -> STORE everywhere. delete ASSIGN
-* switch order of inputs to BUFFER, should be DEVICE then (optional) unique
+* switch order of inputs to BUFFER, should be DEVICE then (optional) unique <-- don't do this, keep GBARRIER
 * replace get_kernel with get_program returning ProgramSpec. move Kernel class stuff here
 * move linearizer type_verify into codegen/__init__

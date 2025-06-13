@@ -1,4 +1,4 @@
-from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map, _substitute
+from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map, _substitute, KernelInfo
 from testgrad.helpers import prod, unwrap, pluralize
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
@@ -16,6 +16,9 @@ merge_views = PatternMatcher([
   (UPat(Ops.VIEW, src=(UPat(Ops.VIEW, name="v1"),), name="v2"), lambda v1,v2: v1.replace(arg=v1.arg+v2.arg)),
   # replace MovementOps with VIEW
   (UPat(GroupOp.Movement, src=(UPat.var("x"),), name="mop"), lambda mop,x: x.base.view(mop.st)),
+])
+
+remove_views = PatternMatcher([
   # remove NOOP views
   (UPat.var("x").view(name="view"), lambda x,view: x if x.st is not None and view.st.contiguous and view.shape == x.shape else None),
 ])
@@ -42,7 +45,7 @@ def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
   return UOp(Ops.REDUCE_AXIS, r.dtype, (src.view(input_st + ShapeTracker(tuple(nv))),),
              (r.arg[0], tuple(range(len(view.shape), len(view.shape) + len(r.axis_arg)))))
 
-view_left = merge_views+PatternMatcher([
+view_left = merge_views+remove_views+PatternMatcher([
   # view before elementwise and buffer ops
   (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.VALID}, name="e"),), name="view"),
    lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if view.st.size <= e.st.size else None),
@@ -55,48 +58,64 @@ fix_stores = PatternMatcher([
   (UPat(Ops.STORE, src=(UPat(GroupOp.All-{Ops.BUFFER, Ops.STORE}), UPat.var('x'))), lambda x: x),
 ])
 
-to_buffers = merge_views+PatternMatcher([
-  # replace CONTIGUOUS/COPY with a store to a buffer
-  (UPat((Ops.CONTIGUOUS, Ops.COPY), name="x"), lambda x:
-   UOp.new_buffer(x.device, prod(x.shape), x.dtype, unique=False).store(x.src[0]).reshape(x.shape)),
-  # VIEW not on BUFFER or CONST needs to be a buffer
-  # TODO: why is DEVICE here?
-  (UPat(Ops.VIEW, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE} - GroupOp.Movement, name="x"),),
-        name="v"), lambda x,v: UOp.new_buffer(x.device, prod(x.shape), x.dtype, unique=False).store(x).view(v.arg)),
-])
-
 def do_kernelize(x:UOp):
+  const_replace = {}
   srcs = []
   def gate(y:UOp):
     if y.op in {Ops.STORE, Ops.BUFFER}:
       srcs.append(y)
       return False
+    # TODO: should this be CONST(VIEW(DEVICE)) and not just CONST(DEVICE)?
+    if y.op is Ops.CONST and len(y.src): const_replace[y] = y.replace(src=())
     return True
   srcs.append(x.src[0])
   x.src[1].toposort(gate)
 
-  # get bufs_replace
   bufs_replace = {}
-  for y in srcs: bufs_replace[y] = UOp(Ops.DEFINE_GLOBAL, y.dtype.ptr(y.buffer.size), arg=len(bufs_replace))
-  return x.src[0].store(UOp(Ops.KERNEL, src=tuple(srcs), arg=Kernel(x.substitute(bufs_replace, name="replace stores").sink())))
+  for i,y in enumerate(srcs):
+    dg = UOp(Ops.DEFINE_GLOBAL, y.dtype.ptr(y.buffer.size), arg=len(bufs_replace))
+    bufs_replace[y] = dg.view(ShapeTracker.from_shape((y.buffer.size,))) if i != 0 else dg
+  bufs_replace.update(const_replace)
+
+  # this is a normal kernel
+  if len(srcs) == 2 and srcs[0].device != srcs[1].device:
+    kast = UOp(Ops.COPY)
+  else:
+    info = KernelInfo(name='k'+'_'.join([str(s) for s in x.src[1].shape]))
+    kast = graph_rewrite(x, _substitute+merge_views, ctx=bufs_replace, name="fixup kernel").sink(arg=info)
+  return x.src[0].store(UOp(Ops.KERNEL, src=tuple(srcs), arg=Kernel(kast)))
 
 kernelize = PatternMatcher([
   # kernels come from STORE
   (UPat(Ops.STORE, src=(UPat(), UPat(GroupOp.All - {Ops.KERNEL})), name="x"), do_kernelize),
 ])
 
+add_gbarrier = PatternMatcher([
+  # replace CONTIGUOUS with GBARRIER (should be done in tensor.py?)
+  (UPat(Ops.CONTIGUOUS, name="x"), lambda x: x.src[0].gbarrier()),
+  # add GBARRIER before VIEW and COPY
+  (UPat((Ops.VIEW, Ops.COPY), src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE, Ops.GBARRIER} - GroupOp.Movement,
+                                        name="x"),), name="v"), lambda x,v: v.replace(src=(x.gbarrier(),))),
+
+  # add GBARRIER after COPY (and tag the COPY to not repeat)
+  (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=1).gbarrier() if x.tag is None else None),
+  # merge GBARRIERs
+  (UPat(Ops.GBARRIER, src=(UPat(Ops.GBARRIER, name="x"),)), lambda x: x),
+])
+
+gbarrier_to_buffer = PatternMatcher([
+  (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
+  # remove tags from COPY
+  (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
+])
+
 @track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   # NOTE: might need to insert some contiguous if there's reduces that would fork
   tensor_map = graph_rewrite_map(sink, view_left+fix_stores, name="move views")
-  tensor_map = graph_rewrite_map(tensor_map[sink], to_buffers, input_map=tensor_map, name="add buffers")
+  tensor_map = graph_rewrite_map(tensor_map[sink], add_gbarrier, input_map=tensor_map, name="add gbarriers")
+  tensor_map = graph_rewrite_map(tensor_map[sink], gbarrier_to_buffer, input_map=tensor_map, name="gbarrier to buffers")
   tensor_map = graph_rewrite_map(tensor_map[sink], kernelize, input_map=tensor_map, name="create kernels")
-
-  # make buffers unique, allowing a chance for them to dedup based on their inputs
-  unique_buffers = {}
-  for u in tensor_map[sink].toposort():
-    if u.op is Ops.BUFFER and len(u.src) == 1: unique_buffers[u] = u.replace(src=u.src+(UOp.unique(),))
-  tensor_map = graph_rewrite_map(tensor_map[sink], _substitute, ctx=unique_buffers, input_map=tensor_map, name="make unique buffers")
 
   graph_rewrite(tensor_map[sink], PatternMatcher([]), name="output")
   return tensor_map
