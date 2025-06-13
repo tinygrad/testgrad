@@ -32,7 +32,7 @@ def create_schedule_with_vars(sched_sink:UOp):
   # linearize KERNEL UOps into ScheduleItems in BFS order
   queue = deque(k for k,v in in_degree.items() if v == 0)
   schedule: list[ScheduleItem] = []
-  var_vals: dict[Variable, int] = {}
+
   bound_vars_dicts = []
   while queue:
     k = queue.popleft()
