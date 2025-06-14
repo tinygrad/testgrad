@@ -8,6 +8,10 @@ from testgrad import Tensor, Device, dtypes
 from testgrad.tensor import _to_np_dtype
 from testgrad.device import is_dtype_supported
 
+if getenv("TINY_BACKEND"):
+  import testgrad.frontend.torch # noqa: F401 # pylint: disable=unused-import
+  torch.set_default_device("tiny")
+
 if CI:
   warnings.filterwarnings("ignore", message="Non-empty compiler output encountered")
 

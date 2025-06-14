@@ -37,15 +37,24 @@ FILES = ["dtype.py", "helpers.py",
          #"codegen/expander.py",
          #"codegen/linearize.py",
 ]
-src = pathlib.Path("../tinygrad/tinygrad")
-dest = pathlib.Path("testgrad")
 
-for f in FILES:
-  print("importing", f)
-  rd = open(src/f).read()
-  rd = rd.replace("from tinygrad ", "from testgrad ")
-  rd = rd.replace("from tinygrad.", "from testgrad.")
-  rd = rd.replace("import tinygrad.", "import testgrad.")
-  (dest/f).parent.mkdir(parents=True, exist_ok=True)
-  with open(dest/f, "w") as f:
-    f.write(rd)
+def move_files(FILES, src, dest):
+  for f in FILES:
+    print("importing", f)
+    rd = open(src/f).read()
+    rd = rd.replace("from tinygrad ", "from testgrad ")
+    rd = rd.replace("from tinygrad.", "from testgrad.")
+    rd = rd.replace("import tinygrad.", "import testgrad.")
+    (dest/f).parent.mkdir(parents=True, exist_ok=True)
+    with open(dest/f, "w") as f:
+      f.write(rd)
+
+move_files(FILES, pathlib.Path("../tinygrad/tinygrad"), pathlib.Path("testgrad"))
+
+TEST_FILES = [
+  "test_ops.py",
+  "test_tiny.py",
+  "unit/test_disk_tensor.py",
+]
+
+move_files(TEST_FILES, pathlib.Path("../tinygrad/test"), pathlib.Path("test"))
