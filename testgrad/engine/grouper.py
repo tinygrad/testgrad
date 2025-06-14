@@ -112,8 +112,8 @@ def to_buffer_view(v:UOp):
 
 add_gbarrier = PatternMatcher([
   # add GBARRIER on all SINK bases (with a tag)
-  (UPat(Ops.SINK, name="s"), lambda s:
-    ns if (ns:=s.replace(src=tuple([x.base.gbarrier().view(x.st) if x.base.op is not Ops.GBARRIER else x for x in s.src]))) is not s else None),
+  #(UPat(Ops.SINK, name="s"), lambda s:
+  #  ns if (ns:=s.replace(src=tuple([x.base.gbarrier().view(x.st) if x.base.op is not Ops.GBARRIER else x for x in s.src]))) is not s else None),
   # replace CONTIGUOUS with GBARRIER (should be done in tensor.py?)
   (UPat(Ops.CONTIGUOUS, name="x"), lambda x: x.src[0].gbarrier()),
   # add GBARRIER before VIEW
@@ -127,20 +127,25 @@ add_gbarrier = PatternMatcher([
   # merge GBARRIERs
   (UPat(Ops.GBARRIER, src=(UPat(Ops.GBARRIER, name="x"),)), lambda x: x),
   # some GBARRIERs can be BUFFER_VIEW
-  (UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
+  #(UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
+  # force realize anything in the context
+  (UPat(GroupOp.All, name="x"), lambda ctx,x: x.replace(tag=1).gbarrier() if x in ctx and x.tag is None else None),
 ])
 
 gbarrier_to_buffer = merge_views+PatternMatcher([
   (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
   # remove tags from COPY
-  (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
+  #(UPat(GroupOp.All, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
+  # NOTE: if tags are removed, the replace loops forever
 ])
 
 @track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   # NOTE: might need to insert some contiguous if there's reduces that would fork
   tensor_map = graph_rewrite_map(sink, view_left+fix_stores, name="move views")
-  tensor_map = graph_rewrite_map(tensor_map[sink], add_gbarrier, input_map=tensor_map, name="add gbarriers")
+  # force realize bases
+  force_realize = set([x.base for x in tensor_map[sink].src])
+  tensor_map = graph_rewrite_map(tensor_map[sink], add_gbarrier, ctx=force_realize, input_map=tensor_map, name="add gbarriers")
   tensor_map = graph_rewrite_map(tensor_map[sink], gbarrier_to_buffer, input_map=tensor_map, name="gbarrier to buffers")
   tensor_map = graph_rewrite_map(tensor_map[sink], kernelize, input_map=tensor_map, name="create kernels")
 
