@@ -54,6 +54,7 @@ move_files(FILES, pathlib.Path("../tinygrad/tinygrad"), pathlib.Path("testgrad")
 TEST_FILES = [
   "test_ops.py",
   "test_tiny.py",
+  "test_arange.py",
   "unit/test_disk_tensor.py",
 ]
 

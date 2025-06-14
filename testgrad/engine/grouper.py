@@ -1,5 +1,5 @@
 from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map, _substitute, KernelInfo
-from testgrad.helpers import prod, unwrap, pluralize, merge_dicts, dedup
+from testgrad.helpers import prod, unwrap, pluralize, merge_dicts, dedup, colored
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
 from dataclasses import dataclass
@@ -93,8 +93,12 @@ def do_kernelize(x:UOp):
   if len(srcs) == 2 and srcs[0].device != srcs[1].device:
     kast = UOp(Ops.COPY)
   else:
-    info = KernelInfo(name='k'+'_'.join([str(s) for s in x.src[1].shape]))
-    kast = graph_rewrite(x, _substitute+merge_views, ctx=bufs_replace, name="fixup kernel", bottom_up=True).sink(arg=info)
+    kast = graph_rewrite(x, _substitute+merge_views, ctx=bufs_replace, name="fixup kernel", bottom_up=True)
+    rr = sorted(dedup([x.shape for x in kast.toposort() if x.st is not None]))
+    dims = [colored(x, 'blue') for x in rr[0] if x != 1]
+    dims += [colored(x, 'red') for x in rr[-1][len(dims):] if x != 1]
+    info = KernelInfo(name='k_'+colored('_', 'BLACK').join(dims))
+    kast = kast.sink(arg=info)
   return x.src[0].store(UOp(Ops.KERNEL, src=tuple(srcs), arg=Kernel(kast)))
 
 kernelize = PatternMatcher([
