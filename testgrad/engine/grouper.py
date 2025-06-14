@@ -112,7 +112,8 @@ def to_buffer_view(v:UOp):
 
 add_gbarrier = PatternMatcher([
   # add GBARRIER on all SINK bases (with a tag)
-  (UPat(Ops.SINK, name="s"), lambda s: s.replace(src=tuple([x.base.gbarrier().view(x.st) for x in s.src]), tag=1) if s.tag is None else None),
+  (UPat(Ops.SINK, name="s"), lambda s:
+    ns if (ns:=s.replace(src=tuple([x.base.gbarrier().view(x.st) if x.base.op is not Ops.GBARRIER else x for x in s.src]))) is not s else None),
   # replace CONTIGUOUS with GBARRIER (should be done in tensor.py?)
   (UPat(Ops.CONTIGUOUS, name="x"), lambda x: x.src[0].gbarrier()),
   # add GBARRIER before VIEW
@@ -129,10 +130,10 @@ add_gbarrier = PatternMatcher([
   (UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
 ])
 
-gbarrier_to_buffer = PatternMatcher([
+gbarrier_to_buffer = merge_views+PatternMatcher([
   (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
   # remove tags from COPY
-  (UPat((Ops.COPY, Ops.SINK), name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
+  (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
 ])
 
 @track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
