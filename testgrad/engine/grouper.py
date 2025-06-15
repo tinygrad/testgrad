@@ -1,4 +1,5 @@
 from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map, _substitute, KernelInfo
+from testgrad.uop.ops import resolve
 from testgrad.helpers import prod, unwrap, pluralize, merge_dicts, dedup, colored
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
@@ -95,8 +96,8 @@ def do_kernelize(x:UOp):
   else:
     kast = graph_rewrite(x, _substitute+merge_views, ctx=bufs_replace, name="fixup kernel", bottom_up=True)
     rr = sorted(dedup([x.shape for x in kast.toposort() if x.st is not None]))
-    dims = [colored(x, 'blue') for x in rr[0] if x != 1]
-    dims += [colored(x, 'red') for x in rr[-1][len(dims):] if x != 1]
+    dims = [colored(x, 'blue') for x in rr[0] if resolve(x != 1)]
+    dims += [colored(x, 'red') for x in rr[-1][len(dims):] if resolve(x != 1)]
     info = KernelInfo(name='k_'+colored('_', 'BLACK').join(dims))
     kast = kast.sink(arg=info)
   return x.src[0].store(UOp(Ops.KERNEL, src=tuple(srcs), arg=Kernel(kast)))
