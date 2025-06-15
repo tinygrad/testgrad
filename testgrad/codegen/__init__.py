@@ -3,12 +3,13 @@ import functools
 from dataclasses import dataclass
 from testgrad.helpers import QUANTIZE, DEVECTORIZE, TRANSCENDENTAL
 from testgrad.uop.ops import PatternMatcher, graph_rewrite, UOp
+from testgrad.uop.spec import type_verify
 from testgrad.renderer import Renderer
 
 # import all pattern matchers here
-from testgrad.codegen.lowerer import LowererContext, pm_lowerer
+from testgrad.codegen.lowerer import pm_lowerer, LowererContext
 from testgrad.uop.symbolic import sym, symbolic_simple, gep_pushing
-from testgrad.codegen.expander import migrate_indexing, pm_store_ignore, pm_move_ignore, pm_delete_ignore, expander
+from testgrad.codegen.expander import migrate_indexing, expander
 from testgrad.codegen.devectorizer import load_store_folding, load_store_indexing, devectorize, \
   pm_reduce, ReduceContext, correct_load_store, pm_render, get_late_rewrite_patterns
 from testgrad.codegen.linearize import block_create, pm_blockend_merge, block_merge, pm_finalize, BlockContext
@@ -38,18 +39,13 @@ def get_rewrites_for_renderer(opts:Renderer, linearizer:bool=True) -> list[Rewri
 def _get_rewrites_for_renderer(opts:Renderer, linearizer:bool, _QUANTIZE, _DEVECTORIZE, _TRANSCENDENTAL) -> list[RewriteStep]:
   # ** lowerer (rewrite_shapetracker_with_index) **
   ret: list[RewriteStep] = []
-  #if _QUANTIZE and opts.device in {"CPU", "DSP"}: ret.append(RewriteStep(pm_quant, name="quantize"))
   ret.append(RewriteStep(pm_lowerer, lambda _: LowererContext(), name="lowerer", bottom_up=True))
 
   # ** expander (expand_rewrite) **
   ret.append(RewriteStep(sym+migrate_indexing, name="initial symbolic"))
 
-  # ignore (for masked stores)
-  ret.append(RewriteStep(pm_store_ignore, name="store_ignore"))
-  ret.append(RewriteStep(pm_move_ignore, name="move_ignore"))
-
-  # expand + remove surviving ignores
-  ret.append(RewriteStep(pm_delete_ignore+sym+expander, name="expander"))
+  # expand
+  ret.append(RewriteStep(sym+expander, name="expander"))
 
   # ** devectorizer (full_graph_rewrite) **
   # remove reduce
@@ -76,4 +72,8 @@ def _get_rewrites_for_renderer(opts:Renderer, linearizer:bool, _QUANTIZE, _DEVEC
 
 def full_rewrite_to_sink(sink:UOp, opts:Renderer|None=None, linearizer:bool=False) -> UOp:
   return apply_rewrites(sink, get_rewrites_for_renderer(opts if opts is not None else Renderer(), linearizer))
-def full_rewrite(sink:UOp, opts:Renderer|None=None) -> list[UOp]: return list(full_rewrite_to_sink(sink, opts, linearizer=True).arg.lst)
+
+def full_rewrite(sink:UOp, opts:Renderer|None=None) -> list[UOp]:
+  lst = list(full_rewrite_to_sink(sink, opts, linearizer=True).arg.lst)
+  #if __debug__: type_verify(lst)
+  return lst

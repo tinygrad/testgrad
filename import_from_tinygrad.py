@@ -38,7 +38,7 @@ else:
           #"codegen/__init__.py",
           "codegen/devectorizer.py",
           # IGNORE removed
-          #"codegen/expander.py",
+          "codegen/expander.py",
           #"codegen/linearize.py",
   ]
 
