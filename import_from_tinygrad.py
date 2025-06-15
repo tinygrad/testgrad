@@ -7,6 +7,7 @@ if len(sys.argv) > 1:
   TEST_FILES = []
 else:
   FILES = ["dtype.py", "helpers.py",
+          # fix reduce gradient
           #"gradient.py",
           "device.py",
           "__init__.py",
@@ -17,8 +18,7 @@ else:
           "runtime/ops_python.py",
           "runtime/ops_npy.py",
           "runtime/ops_disk.py",
-          # split libc import line
-          # "runtime/support/elf.py"
+          "runtime/support/elf.py"
           "renderer/__init__.py",
           #"renderer/cstyle.py",
           "runtime/autogen/libc.py",
@@ -26,8 +26,8 @@ else:
           "uop/__init__.py",  "uop/mathtraits.py", "uop/upat.py",
           # changing reduce here
           #"uop/ops.py",
-          "uop/spec.py",
           #"uop/symbolic.py",
+          "uop/spec.py",
           "uop/transcendental.py",
           # changing reduce function here
           #"shape/shapetracker.py",
@@ -37,9 +37,8 @@ else:
           # lowerer removed
           #"codegen/__init__.py",
           "codegen/devectorizer.py",
-          # IGNORE removed
           "codegen/expander.py",
-          #"codegen/linearize.py",
+          "codegen/linearize.py",
   ]
 
   TEST_FILES = [
