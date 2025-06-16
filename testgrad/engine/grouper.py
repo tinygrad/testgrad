@@ -1,5 +1,5 @@
 from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map, _substitute, KernelInfo
-from testgrad.uop.ops import resolve
+from testgrad.uop.ops import resolve, identity_element
 from testgrad.helpers import prod, unwrap, pluralize, merge_dicts, dedup, colored
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
@@ -54,11 +54,14 @@ view_left = merge_views+PatternMatcher([
    lambda v,c,d: v.src[0].copy_to_device(d).view(v.arg) if v.src[0].size <= v.size else None),
 ])
 
-fix_stores = PatternMatcher([
+early_rules = PatternMatcher([
   # remove STOREs that don't target a BUFFER or another STORE
   (UPat(Ops.STORE, src=(UPat(GroupOp.All-{Ops.BUFFER, Ops.STORE}), UPat.var('x'))), lambda x: x),
   # remove DETACH
-  (UPat(Ops.DETACH, name="x"), lambda x: x.src[0])
+  (UPat(Ops.DETACH, name="x"), lambda x: x.src[0]),
+  # UOp with size 0 is zero
+  (UPat(GroupOp.All-{Ops.SINK}, name="root"), lambda root: root.const_like(0) if root.base.st is not None and root.size == 0 \
+    and not (root.base.op is Ops.CONST and root.base.arg == 0) else None),
 ])
 
 def do_kernelize(x:UOp):
@@ -146,9 +149,9 @@ gbarrier_to_buffer = merge_views+PatternMatcher([
 @track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   # NOTE: might need to insert some contiguous if there's reduces that would fork
-  tensor_map = graph_rewrite_map(sink, view_left+fix_stores, name="move views")
+  tensor_map = graph_rewrite_map(sink, view_left+early_rules, name="move views")
   # force realize bases
-  force_realize = set([x.base for x in tensor_map[sink].src])
+  force_realize = set([x.base for x in tensor_map[sink].src if x.base.op is not Ops.CONST])
   tensor_map = graph_rewrite_map(tensor_map[sink], add_gbarrier, ctx=force_realize, input_map=tensor_map, name="add gbarriers")
   tensor_map = graph_rewrite_map(tensor_map[sink], gbarrier_to_buffer, input_map=tensor_map, name="gbarrier to buffers")
   tensor_map = graph_rewrite_map(tensor_map[sink], kernelize, input_map=tensor_map, name="create kernels")
