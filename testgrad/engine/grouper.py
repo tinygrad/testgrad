@@ -128,8 +128,8 @@ add_gbarrier = PatternMatcher([
     lambda x,v,d: v.replace(src=(x.gbarrier(), d))),
   # add GBARRIER after COPY (and tag the COPY to not repeat)
   (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=1).gbarrier() if x.tag is None else None),
-  # merge GBARRIERs
-  (UPat(Ops.GBARRIER, src=(UPat(Ops.GBARRIER, name="x"),)), lambda x: x),
+  # delete GBARRIERs on GBARRIERs or BUFFERs
+  (UPat(Ops.GBARRIER, src=(UPat((Ops.GBARRIER, Ops.BUFFER), name="x"),)), lambda x: x),
   # some GBARRIERs can be BUFFER_VIEW
   #(UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
   # force realize anything in the context

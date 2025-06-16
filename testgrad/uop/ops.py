@@ -255,7 +255,6 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
   def range(dtype:DType, end:sint, idx:int): return UOp(Ops.RANGE, dtype=dtype, src=(sint_to_uop(end),), arg=idx)
   def r(self, op:Ops, axis:tuple[int, ...]):
     axis = tuple(sorted([x for x in axis if resolve(self.shape[x] != 1)]))
-    #return self if len(axis) == 0 else UOp(Ops.REDUCE_AXIS, self.dtype, (self,), (op, axis))
     if len(axis) == 0: return self
     ret = self.permute(tuple([i for i in range(len(self.shape)) if i not in axis])+axis)
     ret = UOp(Ops.REDUCE_AXIS, self.dtype, (ret,), (op, tuple(range(len(self.shape)-len(axis), len(self.shape)))))
