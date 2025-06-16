@@ -17,7 +17,7 @@ else:
           "runtime/ops_python.py",
           "runtime/ops_npy.py",
           "runtime/ops_disk.py",
-          "runtime/support/elf.py"
+          "runtime/support/elf.py",
           "renderer/__init__.py",
           #"renderer/cstyle.py",
           "runtime/autogen/libc.py",
