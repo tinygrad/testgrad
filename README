@@ -7,11 +7,10 @@ The tensor, UOp, graph rewrite, and rendering infra is good.
 == takeaways to date ==
 
 * symbolic should move from codegen to uop. uop should not import from codegen (done)
-* "tinygrad" is hardcoded in device.py when it searches for ops
-* remove CPU graph
-* split libc import line
+* replace get_kernel with get_program returning ProgramSpec. move Kernel class stuff here (done)
+* move linearizer type_verify into codegen/__init__ (done)
+* "tinygrad" is hardcoded in device.py when it searches for ops (fixed)
+* split libc import line (done)
 
+* remove CPU graph
 * switch from ASSIGN -> STORE everywhere. delete ASSIGN
-* switch order of inputs to BUFFER, should be DEVICE then (optional) unique <-- don't do this, keep GBARRIER
-* replace get_kernel with get_program returning ProgramSpec. move Kernel class stuff here
-* move linearizer type_verify into codegen/__init__
