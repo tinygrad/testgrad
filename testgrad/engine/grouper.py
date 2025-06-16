@@ -49,6 +49,9 @@ view_left = merge_views+PatternMatcher([
    lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if view.st.size <= e.st.size else None),
   # push a non contiguous ShapeTracker through reduceop
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
+  # view after COPY unless it's a shrink
+  (UPat(Ops.COPY, src=(UPat(Ops.VIEW, name="v"), UPat(name="d")), name="c"),
+   lambda v,c,d: v.src[0].copy_to_device(d).view(v.arg) if v.src[0].size <= v.size else None),
 ])
 
 fix_stores = PatternMatcher([
