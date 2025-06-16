@@ -13,8 +13,7 @@ else:
           "__init__.py",
           # tensor replaces assign with store
           #"tensor.py",
-          # remove CPU graph
-          #"runtime/ops_cpu.py",
+          "runtime/ops_cpu.py",
           "runtime/ops_python.py",
           "runtime/ops_npy.py",
           "runtime/ops_disk.py",

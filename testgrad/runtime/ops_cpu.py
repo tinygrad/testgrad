@@ -1,4 +1,4 @@
-import functools, platform, subprocess, sys
+import platform, subprocess, sys
 from testgrad.helpers import capstone_flatdump, getenv
 from testgrad.device import Compiled, Compiler, MallocAllocator, CPUProgram
 from testgrad.runtime.support.elf import jit_loader
@@ -18,8 +18,5 @@ class ClangJITCompiler(Compiler):
 
   def disassemble(self, lib:bytes): return capstone_flatdump(lib)
 
-class ClangDevice(Compiled):
-  def __init__(self, device:str):
-    super().__init__(device, MallocAllocator, ClangRenderer(), ClangJITCompiler(), CPUProgram)
-
-CPUDevice = ClangDevice
+class CPUDevice(Compiled):
+  def __init__(self, device:str): super().__init__(device, MallocAllocator, ClangRenderer(), ClangJITCompiler(), CPUProgram)
