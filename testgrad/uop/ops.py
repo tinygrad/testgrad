@@ -133,7 +133,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
   @functools.cached_property
   def st(self) -> ShapeTracker|None:
     # stores return shape of the buffer
-    if self.op is Ops.STORE: return self.src[0].st
+    if self.op in {Ops.LOAD, Ops.STORE}: return self.src[0].st
 
     # VIEW and MovementOps define a new ShapeTracker from the arg
     if self.op is Ops.VIEW: return self.arg
@@ -389,7 +389,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
       assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
       return ret
     # TODO: why didn't ASSIGN have to be here?
-    if self.op is Ops.STORE: return self.src[0].buffer
+    if self.op in {Ops.LOAD, Ops.STORE}: return self.src[0].buffer
     if self.op is Ops.BUFFER_VIEW: return self.src[0].buffer.view(self.arg[0], self.dtype, self.arg[1])
     assert self.op is Ops.BUFFER, f"must be BUFFER {self.op}"
     if (cret:=buffers.get(self)) is not None: return cret

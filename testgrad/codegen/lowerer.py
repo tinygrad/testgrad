@@ -39,5 +39,5 @@ pm_lowerer = PatternMatcher([
   (UPat(Ops.STORE, src=(UPat(Ops.DEFINE_GLOBAL), UPat()), name="store"), add_store_indexing),
   (UPat(Ops.REDUCE_AXIS, name="red"), add_reduce_indexing),
   (UPat(Ops.VIEW, src=(UPat.cvar("c"),), name="view"), view_const),
-  (UPat(Ops.VIEW, src=(UPat(Ops.DEFINE_GLOBAL, name="buf"),), name="view"), view_buffer),
+  (UPat(Ops.VIEW, src=(UPat(Ops.DEFINE_GLOBAL, name="buf"),), name="view").load(), view_buffer),
 ])

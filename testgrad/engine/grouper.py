@@ -20,6 +20,8 @@ merge_views = PatternMatcher([
   # view after COPY unless it's a shrink
   (UPat(Ops.COPY, src=(UPat(Ops.VIEW, name="v"), UPat(name="d")), name="c"),
    lambda v,c,d: v.src[0].copy_to_device(d).view(v.arg) if v.src[0].size <= v.size else None),
+  # always put view before load
+  (UPat(Ops.VIEW, src=(UPat.var("x").load(),), name="v"), lambda x,v: x.view(v.arg).load()),
 ])
 
 # change reduceop axes and input ShapeTrackers, view gets replaced with a reshape.
@@ -127,7 +129,7 @@ add_gbarrier = merge_views+PatternMatcher([
   # replace CONTIGUOUS with GBARRIER (should be done in tensor.py?)
   (UPat(Ops.CONTIGUOUS, name="x"), lambda x: x.src[0].gbarrier()),
   # add GBARRIER before VIEW
-  (UPat(Ops.VIEW, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE, Ops.GBARRIER, Ops.BUFFER_VIEW} - GroupOp.Movement,
+  (UPat(Ops.VIEW, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE, Ops.GBARRIER, Ops.BUFFER_VIEW, Ops.LOAD} - GroupOp.Movement,
                             name="x"),), name="v"), lambda x,v: v.replace(src=(x.gbarrier(),))),
   # add GBARRIER before COPY, unless it's a BUFFER or GBARRIER
   (UPat(Ops.COPY, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.GBARRIER, Ops.BUFFER_VIEW}, name="x"), UPat(Ops.DEVICE, name="d")), name="v"),
@@ -135,7 +137,7 @@ add_gbarrier = merge_views+PatternMatcher([
   # add GBARRIER after COPY (and tag the COPY to not repeat)
   (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=1).gbarrier() if x.tag is None else None),
   # delete GBARRIERs on GBARRIERs or BUFFERs
-  (UPat(Ops.GBARRIER, src=(UPat((Ops.GBARRIER, Ops.BUFFER), name="x"),)), lambda x: x),
+  (UPat(Ops.GBARRIER, src=(UPat((Ops.GBARRIER, Ops.BUFFER, Ops.LOAD), name="x"),)), lambda x: x),
   # some GBARRIERs can be BUFFER_VIEW or just RESHAPE
   (UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
   # force realize anything in the context
@@ -143,7 +145,7 @@ add_gbarrier = merge_views+PatternMatcher([
 ])
 
 gbarrier_to_buffer = merge_views+PatternMatcher([
-  (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
+  (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).load().reshape(x.shape)),
   # remove tags from COPY
   #(UPat(GroupOp.All, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
   # NOTE: if tags are removed, the replace loops forever
