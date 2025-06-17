@@ -116,7 +116,9 @@ kernelize = PatternMatcher([
 
 def to_buffer_view(v:UOp):
   if len(v.arg.views) > 1 or not ShapeTracker.from_shape(v.shape, v.arg.views[0].strides).contiguous: return None
-  return UOp(Ops.BUFFER_VIEW, v.dtype, (v.src[0],), (v.arg.size, v.arg.views[0].offset))
+  bv = UOp(Ops.BUFFER_VIEW, v.dtype, (v.src[0],), (v.arg.size, v.arg.views[0].offset)) \
+    if v.arg.size != v.src[0].size or v.arg.views[0].offset != 0 else v.src[0]
+  return bv.reshape(v.shape)
 
 add_gbarrier = PatternMatcher([
   # add GBARRIER on all SINK bases (with a tag)
@@ -134,8 +136,8 @@ add_gbarrier = PatternMatcher([
   (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=1).gbarrier() if x.tag is None else None),
   # delete GBARRIERs on GBARRIERs or BUFFERs
   (UPat(Ops.GBARRIER, src=(UPat((Ops.GBARRIER, Ops.BUFFER), name="x"),)), lambda x: x),
-  # some GBARRIERs can be BUFFER_VIEW
-  #(UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
+  # some GBARRIERs can be BUFFER_VIEW or just RESHAPE
+  (UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
   # force realize anything in the context
   (UPat(GroupOp.All, name="x"), lambda ctx,x: x.replace(tag=1).gbarrier() if x in ctx and x.tag is None else None),
 ])
