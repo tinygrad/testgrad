@@ -49,7 +49,8 @@ def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
 view_left = merge_views+PatternMatcher([
   # view before elementwise and buffer ops
   (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.VALID}, name="e"),), name="view"),
-   lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if view.st.size <= e.st.size and \
+   lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if
+    (view.st.size <= e.st.size or not any([x.op is Ops.BUFFER for x in view.toposort()])) and \
     (e.op not in GroupOp.UnsafePad or all([x.mask is None for x in view.arg.views])) else None),
   # push a non contiguous ShapeTracker through reduceop
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
