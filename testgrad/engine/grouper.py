@@ -17,13 +17,16 @@ merge_views = PatternMatcher([
   (UPat(Ops.VIEW, src=(UPat(Ops.VIEW, name="v1"),), name="v2"), lambda v1,v2: v1.replace(arg=v1.arg+v2.arg)),
   # replace MovementOps with VIEW
   (UPat(GroupOp.Movement, src=(UPat.var("x"),), name="mop"), lambda mop,x: x.base.view(mop.st)),
+  # view after COPY unless it's a shrink
+  (UPat(Ops.COPY, src=(UPat(Ops.VIEW, name="v"), UPat(name="d")), name="c"),
+   lambda v,c,d: v.src[0].copy_to_device(d).view(v.arg) if v.src[0].size <= v.size else None),
 ])
 
 # change reduceop axes and input ShapeTrackers, view gets replaced with a reshape.
 # src->r->view  -->   src->view->r
 def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
-  # don't push expands
-  if view.st.size > r.st.size: return None
+  # don't push expands unless this is a const reduce
+  if view.st.size > r.st.size and any([x.op not in {Ops.VIEW, Ops.CONST, Ops.DEVICE} for x in src.toposort()]): return None
 
   # confirm the input is in order
   # TODO: replace this with a UOp that allows for nothing else then remove this
@@ -50,9 +53,6 @@ view_left = merge_views+PatternMatcher([
     e.op not in GroupOp.UnsafePad or all([x.mask is None for x in view.arg.views]) else None),
   # push a non contiguous ShapeTracker through reduceop
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
-  # view after COPY unless it's a shrink
-  (UPat(Ops.COPY, src=(UPat(Ops.VIEW, name="v"), UPat(name="d")), name="c"),
-   lambda v,c,d: v.src[0].copy_to_device(d).view(v.arg) if v.src[0].size <= v.size else None),
 ])
 
 early_rules = PatternMatcher([
@@ -120,7 +120,7 @@ def to_buffer_view(v:UOp):
     if v.arg.size != v.src[0].size or v.arg.views[0].offset != 0 else v.src[0]
   return bv.reshape(v.shape)
 
-add_gbarrier = PatternMatcher([
+add_gbarrier = merge_views+PatternMatcher([
   # add GBARRIER on all SINK bases (with a tag)
   #(UPat(Ops.SINK, name="s"), lambda s:
   #  ns if (ns:=s.replace(src=tuple([x.base.gbarrier().view(x.st) if x.base.op is not Ops.GBARRIER else x for x in s.src]))) is not s else None),
