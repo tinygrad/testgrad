@@ -9,7 +9,7 @@ class TestSimpleSchedule(unittest.TestCase):
     a2 = a.reshape(16,1,1)
     Tensor.kernelize(a1, a2)
     kernels = [x for x in a1.uop.sink(a2.uop).toposort() if x.op is Ops.KERNEL]
-    assert len(kernels) == 1
+    self.assertEqual(len(kernels), 1)
 
 if __name__ == '__main__':
   unittest.main()

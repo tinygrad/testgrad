@@ -144,7 +144,7 @@ class Tensor(MathTrait):
         const = UOp.const(var.dtype, val, device, ())
         data = data.replace(src=(var.replace(src=const.src), const))
     elif data is None: data = UOp.const(dtype or dtypes.default_float, 0, device, ())
-    elif isinstance(data, get_args(ConstType)): data = UOp.const(dtype or dtypes.from_py(data), data, device, ())
+    elif isinstance(data, get_args(ConstType)): data = UOp.const(dtype or dtypes.from_py(data), data, device)
     elif isinstance(data, bytes): data = _frompy(data, dtypes.uint8 if dtype is None else dtype)
     elif isinstance(data, (list, tuple)):
       if dtype is None:
