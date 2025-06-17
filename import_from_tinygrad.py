@@ -46,6 +46,7 @@ else:
     "test_arange.py",
     "test_schedule.py",
     "unit/test_disk_tensor.py",
+    "unit/test_simple_schedule.py",
   ]
 
 def move_files(FILES, src, dest):

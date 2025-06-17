@@ -15,7 +15,7 @@ from testgrad.shape.shapetracker import ShapeTracker
 from testgrad.uop.ops import PatternMatcher, UOp, Ops, GroupOp, UPat, graph_rewrite, track_rewrites
 from testgrad.uop.symbolic import symbolic_simple
 from testgrad.helpers import CI, DEBUG, FUSE_ARANGE, SPLIT_REDUCEOP, GlobalCounters, Context, getenv, all_same, temp
-#from testgrad.engine.grouper import view_left, view_right, sym, get_kernelize_map, Kernel, create_ast, merge_views, create_kernels
+from testgrad.engine.grouper import view_left, view_right, sym, get_kernelize_map, Kernel, create_ast, merge_views, create_kernels
 from testgrad.engine.schedule import ScheduleItem, create_schedule_with_vars
 from testgrad.engine.realize import CompiledRunner, run_schedule, lower_schedule
 
