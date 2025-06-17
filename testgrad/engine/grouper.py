@@ -50,7 +50,7 @@ view_left = merge_views+PatternMatcher([
   # view before elementwise and buffer ops
   (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.VALID}, name="e"),), name="view"),
    lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if view.st.size <= e.st.size and \
-    e.op not in GroupOp.UnsafePad or all([x.mask is None for x in view.arg.views]) else None),
+    (e.op not in GroupOp.UnsafePad or all([x.mask is None for x in view.arg.views])) else None),
   # push a non contiguous ShapeTracker through reduceop
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
 ])
@@ -159,7 +159,8 @@ gbarrier_to_buffer = merge_views+PatternMatcher([
 @track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   # NOTE: might need to insert some contiguous if there's reduces that would fork
-  tensor_map = graph_rewrite_map(sink, view_left+early_rules, name="move views")
+  tensor_map = graph_rewrite_map(sink, merge_views+early_rules, name="merge views")
+  tensor_map = graph_rewrite_map(tensor_map[sink], view_left, input_map=tensor_map, name="views left")
   # force realize bases
   force_realize = set([x.base for x in tensor_map[sink].src if x.base.op is not Ops.CONST])
   tensor_map = graph_rewrite_map(tensor_map[sink], add_gbarrier, ctx=force_realize, input_map=tensor_map, bottom_up=True, name="add gbarriers")
