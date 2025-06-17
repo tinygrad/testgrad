@@ -20,8 +20,8 @@ merge_views = PatternMatcher([
   # view after COPY unless it's a shrink
   (UPat(Ops.COPY, src=(UPat(Ops.VIEW, name="v"), UPat(name="d")), name="c"),
    lambda v,c,d: v.src[0].copy_to_device(d).view(v.arg) if v.src[0].size <= v.size else None),
-  # always put view before load
-  (UPat(Ops.VIEW, src=(UPat.var("x").load(),), name="v"), lambda x,v: x.view(v.arg).load()),
+  # remove NOOP views
+  (UPat.var("x").view(name="view"), lambda x,view: x if x.st is not None and view.st.contiguous and view.shape == x.shape else None),
 ])
 
 # change reduceop axes and input ShapeTrackers, view gets replaced with a reshape.
@@ -47,8 +47,6 @@ def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
              (r.arg[0], tuple(range(len(view.shape), len(view.shape) + len(r.axis_arg)))))
 
 view_left = merge_views+PatternMatcher([
-  # remove NOOP views
-  (UPat.var("x").view(name="view"), lambda x,view: x if x.st is not None and view.st.contiguous and view.shape == x.shape else None),
   # view before elementwise and buffer ops
   (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.VALID}, name="e"),), name="view"),
    lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if view.st.size <= e.st.size and \
@@ -65,6 +63,13 @@ early_rules = PatternMatcher([
   # UOp with size 0 is zero
   (UPat(GroupOp.All-{Ops.SINK}, name="root"), lambda root: root.const_like(0) if root.base.st is not None and root.size == 0 \
     and not (root.base.op is Ops.CONST and root.base.arg == 0) else None),
+])
+
+kernel_fixup = PatternMatcher([
+  # always put view before load
+  (UPat(Ops.VIEW, src=(UPat.var("x").load(),), name="v"), lambda x,v: x.view(v.arg).load()),
+  # store doesn't need a load
+  (UPat(Ops.STORE, src=(UPat(Ops.LOAD, src=(UPat.var("buf"),)), UPat.var("val"))), lambda val, buf: buf.store(val)),
 ])
 
 def do_kernelize(x:UOp):
@@ -93,7 +98,7 @@ def do_kernelize(x:UOp):
   for i,y in enumerate(srcs):
     dg = UOp(Ops.DEFINE_GLOBAL, y.dtype.ptr(y.buffer.size), arg=len(bufs_replace))
     assert y not in bufs_replace
-    bufs_replace[y] = dg.view(ShapeTracker.from_shape((y.buffer.size,))) if i != 0 else dg
+    bufs_replace[y] = dg.view(ShapeTracker.from_shape((y.buffer.size,))).load() if i != 0 else dg.load()
   bufs_replace.update(const_replace)
   bufs_replace.update(view_replace)
   if len(unbound_dicts):
@@ -103,7 +108,7 @@ def do_kernelize(x:UOp):
   if len(srcs) == 2 and srcs[0].device != srcs[1].device:
     kast = UOp(Ops.COPY)
   else:
-    kast = graph_rewrite(x, _substitute+merge_views, ctx=bufs_replace, name="fixup kernel", bottom_up=True)
+    kast = graph_rewrite(x, _substitute+merge_views+kernel_fixup, ctx=bufs_replace, name="fixup kernel", bottom_up=True)
     rr = sorted(dedup([x.shape for x in kast.toposort() if x.st is not None]))
     dims = [colored(x, 'blue') for x in rr[0] if resolve(x != 1)]
     dims += [colored(x, 'red') for x in rr[-1][len(dims):] if resolve(x != 1)]
@@ -145,7 +150,7 @@ add_gbarrier = merge_views+PatternMatcher([
 ])
 
 gbarrier_to_buffer = merge_views+PatternMatcher([
-  (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).load().reshape(x.shape)),
+  (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
   # remove tags from COPY
   #(UPat(GroupOp.All, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
   # NOTE: if tags are removed, the replace loops forever
