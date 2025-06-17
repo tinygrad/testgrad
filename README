@@ -15,4 +15,5 @@ The tensor, UOp, graph rewrite, and rendering infra is good.
 
 * switch from ASSIGN -> STORE everywhere. delete ASSIGN
 * support copyin/copyout on buffer view? should buffer view be a shape?
-* fix the const view shape
+* fix the const view shape, should be just VIEW(CONST(DEVICE))
+* clean up test_schedule.py to not import from grouper internals

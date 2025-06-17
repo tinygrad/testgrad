@@ -44,6 +44,7 @@ else:
     "test_ops.py",
     "test_tiny.py",
     "test_arange.py",
+    "test_schedule.py",
     "unit/test_disk_tensor.py",
   ]
 
