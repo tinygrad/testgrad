@@ -50,9 +50,10 @@ def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
 view_left = merge_views+PatternMatcher([
   # view before elementwise and buffer ops
   (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.VALID}, name="e"),), name="view"),
-   lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if
-    (view.st.size <= e.st.size or not any([x.op is Ops.BUFFER for x in view.toposort()])) and \
-    (e.op not in GroupOp.UnsafePad or all([x.mask is None for x in view.arg.views])) else None),
+   lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src))),
+    # if
+    #(view.st.size <= e.st.size or not any([x.op is Ops.BUFFER for x in view.toposort()])) and \
+    #(e.op not in GroupOp.UnsafePad or all([x.mask is None for x in view.arg.views])) else None),
   # push a non contiguous ShapeTracker through reduceop
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
   # remove CONTIGUOUS
@@ -146,10 +147,6 @@ add_gbarrier = merge_views+PatternMatcher([
     lambda x,v,d: v.replace(src=(x.gbarrier(), d))),
   # add GBARRIER after COPY (and tag the COPY to not repeat)
   (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=1).gbarrier() if x.tag is None else None),
-  # delete GBARRIERs on GBARRIERs or BUFFERs
-  (UPat(Ops.GBARRIER, src=(UPat((Ops.GBARRIER, Ops.BUFFER, Ops.LOAD), name="x"),)), lambda x: x),
-  # some GBARRIERs can be BUFFER_VIEW or just RESHAPE
-  (UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
 """
 
 add_gbarrier = merge_views+PatternMatcher([
@@ -158,10 +155,12 @@ add_gbarrier = merge_views+PatternMatcher([
 ])
 
 gbarrier_to_buffer = merge_views+PatternMatcher([
+  # delete GBARRIERs on GBARRIERs or BUFFERs
+  (UPat(Ops.GBARRIER, src=(UPat((Ops.GBARRIER, Ops.BUFFER), name="x"),)), lambda x: x),
+  # some GBARRIERs can be BUFFER_VIEW or just RESHAPE
+  (UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
+  # others (worst case) have to be a real BUFFER
   (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
-  # remove tags from COPY
-  #(UPat(GroupOp.All, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None),
-  # NOTE: if tags are removed, the replace loops forever
 ])
 
 @track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")

@@ -248,7 +248,9 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
     if isinstance(b, tuple) and all_same(b): b = b[0]  # doesn't have to be a VCONST if they are all the same
     ret = UOp(Ops.VCONST if isinstance(b, tuple) else Ops.CONST, dtype, arg=dtypes.as_const(b, dtype))
     if device is not None: ret = ret.replace(src=(UOp(Ops.DEVICE, arg=device),))
-    if shape is not None and shape != (): ret = ret.reshape((1,)*len(shape)).expand(shape)
+    if shape is not None and shape != ():
+      assert device is not None, f"only consts on device can have shape {shape}"
+      ret = ret.reshape((1,)*len(shape)).expand(shape)
     return ret
   def valid(self): return UOp.where(UOp(Ops.VALID, dtypes.bool, (UOp(Ops.VIEW, arg=self.st),)), self.const_like(self.base.arg), 0)
   @staticmethod
