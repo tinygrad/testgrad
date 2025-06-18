@@ -28,46 +28,29 @@ merge_views = PatternMatcher([
 # change reduceop axes and input ShapeTrackers, view gets replaced with a reshape.
 # src->r->view  -->   src->view->r
 def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
-  # don't push expands unless this is a const reduce
-  #if view.st.size > r.st.size and any([x.op not in {Ops.VIEW, Ops.CONST, Ops.DEVICE} for x in src.toposort()]): return None
-
   # confirm the input is in order
   # TODO: replace this with a UOp that allows for nothing else then remove this
-  input_st = ShapeTracker.from_shape(src.shape)
-  permute = tuple(i for i in range(len(input_st.shape)) if i not in r.axis_arg)+r.axis_arg
+  permute = tuple(i for i in range(len(src.shape)) if i not in r.axis_arg)+r.axis_arg
   assert permute == tuple(range(len(permute))), f"reduce axis must already be in order, {permute} isn't"
 
   # append the reduce shape to each of the views
-  prshape = prod(rshape:=input_st.shape[-len(r.axis_arg):])
+  prshape = prod(rshape:=src.shape[-len(r.axis_arg):])
   rstrides = strides_for_shape(rshape)
   nv = [View.create(v.shape+rshape, tuple(x*prshape for x in v.strides)+rstrides, v.offset*prshape,
                     v.mask+tuple((0,s) for s in rshape) if v.mask is not None else None) for v in unwrap(view.st).views]
 
   # no reshape required with shrinking REDUCE_AXIS
-  return UOp(Ops.REDUCE_AXIS, r.dtype, (src.view(input_st + ShapeTracker(tuple(nv))),),
+  return UOp(Ops.REDUCE_AXIS, r.dtype, (src.view(ShapeTracker(tuple(nv))),),
              (r.arg[0], tuple(range(len(view.shape), len(view.shape) + len(r.axis_arg)))))
 
 view_left = merge_views+PatternMatcher([
   # view before elementwise and buffer ops
   (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.VALID}, name="e"),), name="view"),
    lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src))),
-    # if
-    #(view.st.size <= e.st.size or not any([x.op is Ops.BUFFER for x in view.toposort()])) and \
-    #(e.op not in GroupOp.UnsafePad or all([x.mask is None for x in view.arg.views])) else None),
   # push a non contiguous ShapeTracker through reduceop
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
   # remove CONTIGUOUS
   (UPat(Ops.CONTIGUOUS, name="x"), lambda x: x.src[0]),
-])
-
-early_rules = PatternMatcher([
-  # remove STOREs that don't target a BUFFER or another STORE
-  (UPat(Ops.STORE, src=(UPat(GroupOp.All-{Ops.BUFFER, Ops.STORE}), UPat.var('x'))), lambda x: x),
-  # remove DETACH
-  (UPat(Ops.DETACH, name="x"), lambda x: x.src[0]),
-  # UOp with size 0 is zero
-  (UPat(GroupOp.All-{Ops.SINK}, name="root"), lambda root: root.const_like(0) if root.base.st is not None and root.size == 0 \
-    and not (root.base.op is Ops.CONST and root.base.arg == 0) else None),
 ])
 
 kernel_fixup = PatternMatcher([
@@ -86,14 +69,16 @@ def do_kernelize(x:UOp):
     if y.op in {Ops.STORE, Ops.BUFFER, Ops.BUFFER_VIEW}:
       srcs.append(y)
       return False
+    # unbind all VIEWs
     if y.op is Ops.VIEW:
       unbound_view, unbound_dict = y.arg.unbind()
       if unbound_view != y.arg:
         unbound_dicts.append(unbound_dict)
         view_replace[y] = y.replace(arg=unbound_view)
-    # TODO: should this be CONST(VIEW(DEVICE)) and not just CONST(DEVICE)?
-    # yea, CONST should just have shape () and this should be removed
-    if y.op is Ops.CONST and len(y.src): const_replace[y] = y.replace(src=()).view(ShapeTracker.from_shape(y.shape))
+    # remove DEVICE from CONST
+    if y.op is Ops.CONST and len(y.src):
+      assert y.src[0].op is Ops.DEVICE
+      const_replace[y] = y.replace(src=()).view(ShapeTracker.from_shape(y.shape))
     return True
   srcs.append(x.src[0])
   x.src[1].toposort(gate)
@@ -132,29 +117,13 @@ def to_buffer_view(v:UOp):
     if v.arg.size != v.src[0].size or v.arg.views[0].offset != 0 else v.src[0]
   return bv.reshape(v.shape)
 
-"""
-add_gbarrier = merge_views+PatternMatcher([
-  # add GBARRIER on all SINK bases (with a tag)
-  #(UPat(Ops.SINK, name="s"), lambda s:
-  #  ns if (ns:=s.replace(src=tuple([x.base.gbarrier().view(x.st) if x.base.op is not Ops.GBARRIER else x for x in s.src]))) is not s else None),
-  # replace CONTIGUOUS with GBARRIER (should be done in tensor.py?)
-  (UPat(Ops.CONTIGUOUS, name="x"), lambda x: x.src[0].gbarrier()),
-  # add GBARRIER before VIEW
-  (UPat(Ops.VIEW, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.STORE, Ops.GBARRIER, Ops.BUFFER_VIEW, Ops.LOAD} - GroupOp.Movement,
-                            name="x"),), name="v"), lambda x,v: v.replace(src=(x.gbarrier(),))),
-  # add GBARRIER before COPY, unless it's a BUFFER or GBARRIER
-  (UPat(Ops.COPY, src=(UPat(GroupOp.All - {Ops.BUFFER, Ops.GBARRIER, Ops.BUFFER_VIEW}, name="x"), UPat(Ops.DEVICE, name="d")), name="v"),
-    lambda x,v,d: v.replace(src=(x.gbarrier(), d))),
-  # add GBARRIER after COPY (and tag the COPY to not repeat)
-  (UPat(Ops.COPY, name="x"), lambda x: x.replace(tag=1).gbarrier() if x.tag is None else None),
-"""
-
 add_gbarrier = merge_views+PatternMatcher([
   # force realize anything in the context
   (UPat(GroupOp.All, name="x"), lambda ctx,x: x.replace(tag=1).gbarrier() if x in ctx and x.tag is None else None),
 ])
 
 def is_constexpr(x:UOp):
+  # TODO: this is broken if there's a VIEW with padding that we can't push left
   return all([x.op in {Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.REDUCE_AXIS, *GroupOp.ALU, Ops.CAST, Ops.BITCAST} for x in x.toposort()])
 
 gbarrier_to_buffer = merge_views+PatternMatcher([
@@ -168,9 +137,18 @@ gbarrier_to_buffer = merge_views+PatternMatcher([
   (UPat(Ops.GBARRIER, name="x"), lambda x: UOp.new_buffer(x.device, prod(x.shape), x.dtype).store(x.src[0]).reshape(x.shape)),
 ])
 
+early_rules = PatternMatcher([
+  # remove STOREs that don't target a BUFFER or another STORE
+  (UPat(Ops.STORE, src=(UPat(GroupOp.All-{Ops.BUFFER, Ops.STORE}), UPat.var('x'))), lambda x: x),
+  # remove DETACH
+  (UPat(Ops.DETACH, name="x"), lambda x: x.src[0]),
+  # UOp with size 0 is zero
+  (UPat(GroupOp.All-{Ops.SINK}, name="root"), lambda root: root.const_like(0) if root.base.st is not None and root.size == 0 \
+    and not (root.base.op is Ops.CONST and root.base.arg == 0) else None),
+])
+
 @track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
-  # NOTE: might need to insert some contiguous if there's reduces that would fork
   tensor_map = graph_rewrite_map(sink, merge_views+early_rules, name="merge views")
 
   # determine the realizes before moving the views
