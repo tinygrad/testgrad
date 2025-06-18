@@ -29,7 +29,7 @@ merge_views = PatternMatcher([
 # src->r->view  -->   src->view->r
 def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
   # don't push expands unless this is a const reduce
-  if view.st.size > r.st.size and any([x.op not in {Ops.VIEW, Ops.CONST, Ops.DEVICE} for x in src.toposort()]): return None
+  #if view.st.size > r.st.size and any([x.op not in {Ops.VIEW, Ops.CONST, Ops.DEVICE} for x in src.toposort()]): return None
 
   # confirm the input is in order
   # TODO: replace this with a UOp that allows for nothing else then remove this
@@ -177,8 +177,8 @@ def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   force_realize = group_realizes(tensor_map[sink])
   tensor_map = graph_rewrite_map(tensor_map[sink], add_gbarrier, ctx=force_realize, input_map=tensor_map, bottom_up=True, name="add gbarriers")
 
-  tensor_map = graph_rewrite_map(tensor_map[sink], view_left, input_map=tensor_map, name="views left")
   tensor_map = graph_rewrite_map(tensor_map[sink], gbarrier_to_buffer, input_map=tensor_map, name="gbarrier to buffers")
+  tensor_map = graph_rewrite_map(tensor_map[sink], view_left, input_map=tensor_map, name="views left")
   tensor_map = graph_rewrite_map(tensor_map[sink], kernelize, input_map=tensor_map, name="create kernels")
 
   graph_rewrite(tensor_map[sink], PatternMatcher([]), name="output")
