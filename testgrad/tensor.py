@@ -14,7 +14,7 @@ from testgrad.device import Device, Buffer
 from testgrad.engine.realize import run_schedule
 from testgrad.engine.memory import memory_planner
 from testgrad.engine.schedule import ScheduleItem, create_schedule_with_vars
-from testgrad.engine.grouper import get_kernelize_map
+from testgrad.engine.kernelize import get_kernelize_map
 
 # *** all in scope Tensors are here. this gets relevant UOps ***
 
