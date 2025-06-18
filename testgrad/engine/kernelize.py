@@ -154,9 +154,14 @@ add_gbarrier = merge_views+PatternMatcher([
   (UPat(GroupOp.All, name="x"), lambda ctx,x: x.replace(tag=1).gbarrier() if x in ctx and x.tag is None else None),
 ])
 
+def is_constexpr(x:UOp):
+  return all([x.op in {Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.REDUCE_AXIS, *GroupOp.ALU} for x in x.toposort()])
+
 gbarrier_to_buffer = merge_views+PatternMatcher([
   # delete GBARRIERs on GBARRIERs or BUFFERs
   (UPat(Ops.GBARRIER, src=(UPat((Ops.GBARRIER, Ops.BUFFER), name="x"),)), lambda x: x),
+  # delete GBARRIERs on constexprs (FUSE_ARANGE)
+  (UPat(Ops.GBARRIER, src=(UPat.var("x"),)), lambda x: x if is_constexpr(x) else None),
   # some GBARRIERs can be BUFFER_VIEW or just RESHAPE
   (UPat(Ops.GBARRIER, src=(UPat(Ops.VIEW, src=(UPat((Ops.BUFFER, Ops.GBARRIER)),), name="v"),)), to_buffer_view),
   # others (worst case) have to be a real BUFFER
@@ -167,8 +172,8 @@ gbarrier_to_buffer = merge_views+PatternMatcher([
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   # NOTE: might need to insert some contiguous if there's reduces that would fork
   tensor_map = graph_rewrite_map(sink, merge_views+early_rules, name="merge views")
-  # force realize bases
-  #force_realize = set([x.base for x in tensor_map[sink].src if x.base.op is not Ops.CONST])
+
+  # determine the realizes before moving the views
   force_realize = group_realizes(tensor_map[sink])
   tensor_map = graph_rewrite_map(tensor_map[sink], add_gbarrier, ctx=force_realize, input_map=tensor_map, bottom_up=True, name="add gbarriers")
 
