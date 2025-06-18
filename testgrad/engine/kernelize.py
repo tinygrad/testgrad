@@ -155,7 +155,7 @@ add_gbarrier = merge_views+PatternMatcher([
 ])
 
 def is_constexpr(x:UOp):
-  return all([x.op in {Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.REDUCE_AXIS, *GroupOp.ALU} for x in x.toposort()])
+  return all([x.op in {Ops.CONST, Ops.VIEW, Ops.DEVICE, Ops.REDUCE_AXIS, *GroupOp.ALU, Ops.CAST, Ops.BITCAST} for x in x.toposort()])
 
 gbarrier_to_buffer = merge_views+PatternMatcher([
   # delete GBARRIERs on GBARRIERs or BUFFERs
