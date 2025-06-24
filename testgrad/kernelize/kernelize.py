@@ -1,6 +1,6 @@
 from testgrad.uop.ops import UOp, graph_rewrite, PatternMatcher, track_rewrites, UPat, Ops, GroupOp, graph_rewrite_map, _substitute, KernelInfo
 from testgrad.uop.ops import resolve
-from testgrad.helpers import prod, unwrap, pluralize, merge_dicts, dedup, colored
+from testgrad.helpers import prod, unwrap, pluralize, merge_dicts, dedup, colored, Metadata
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
 from testgrad.kernelize.grouper import group_realizes
@@ -9,6 +9,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Kernel:
   ast: UOp
+  metadata: tuple[Metadata, ...] = ()
   def __repr__(self):
     ast_rep = f"SINK{tuple(s.op for s in self.ast.src)}" if self.ast.op is Ops.SINK else repr(self.ast.op)
     return f"<Kernel {len(list(self.ast.toposort()))} {ast_rep}>"
@@ -149,7 +150,7 @@ early_rules = PatternMatcher([
 
 remove_tags = PatternMatcher([(UPat(GroupOp.All, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None)])
 
-@track_rewrites(name_fxn=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
+@track_rewrites(name=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   tensor_map = graph_rewrite_map(sink, merge_views+early_rules, name="merge views")
 

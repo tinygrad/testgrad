@@ -1,0 +1,1 @@
+def get_optimized_ast(ast, renderer): return ast

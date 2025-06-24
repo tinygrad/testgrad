@@ -25,7 +25,7 @@ else:
           "nn/__init__.py", "nn/optim.py", "nn/state.py", "nn/datasets.py",
           "uop/__init__.py",  "uop/mathtraits.py", "uop/upat.py",
           # changing reduce here
-          #"uop/ops.py",
+          "uop/ops.py",
           # add one rule here
           #"uop/symbolic.py",
           "uop/spec.py",
@@ -40,6 +40,7 @@ else:
           "codegen/devectorizer.py",
           "codegen/expander.py",
           "codegen/linearize.py",
+          "engine/realize.py",
   ]
 
   TEST_FILES = [
