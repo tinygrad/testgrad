@@ -6,7 +6,7 @@ from testgrad.uop import Ops, GroupOp
 from testgrad.uop.mathtraits import MathTrait
 from testgrad.dtype import ConstType, ImageDType, dtypes, DType, truncate
 from testgrad.helpers import ContextVar, all_int, prod, getenv, all_same, Context, partition, temp, unwrap, T, argfix, Metadata, flatten
-from testgrad.helpers import PICKLE_BUFFERS, dedup, cdiv, cmod, diskcache_put
+from testgrad.helpers import PICKLE_BUFFERS, dedup, cdiv, cmod, diskcache_put, to_function_name
 if TYPE_CHECKING:
   from testgrad.shape.shapetracker import ShapeTracker
   from testgrad.device import Buffer, MultiBuffer
@@ -530,6 +530,8 @@ class KernelInfo:
   local_dims: int = 0           # number of local dimensions  (this is remapping RANGE to SPECIAL)
   upcasted: int = 0             # count that are upcasted     (this is remapping RANGE to UNROLL)
   dont_use_locals: bool = False # don't use local indexing
+  @property
+  def function_name(self): return to_function_name(self.name)
 
 # ******** ops in python ********
 
