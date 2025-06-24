@@ -13,7 +13,7 @@ else:
           "__init__.py",
           # tensor replaces assign with store
           #"tensor.py",
-          "engine/grouper.py",
+          "kernelize/grouper.py",
           "runtime/ops_cpu.py",
           "runtime/ops_python.py",
           "runtime/ops_npy.py",

@@ -3,9 +3,9 @@ import numpy as np
 from testgrad import Tensor, GlobalCounters, dtypes, nn, Device, Variable
 from testgrad.helpers import CI, Context, getenv
 from testgrad.engine.realize import run_schedule
-from testgrad.codegen.kernel import Opt, OptOps, Kernel, KernelOptError
+from testgrad.opt.kernel import Opt, OptOps, Kernel, KernelOptError
 from testgrad.engine.realize import CompiledRunner, ExecItem
-from testgrad.engine.search import get_kernel_actions
+from testgrad.opt.search import get_kernel_actions
 from testgrad.uop.ops import Ops
 
 class TestArange(unittest.TestCase):

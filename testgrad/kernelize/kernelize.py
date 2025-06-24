@@ -3,7 +3,7 @@ from testgrad.uop.ops import resolve
 from testgrad.helpers import prod, unwrap, pluralize, merge_dicts, dedup, colored
 from testgrad.shape.shapetracker import ShapeTracker, strides_for_shape
 from testgrad.shape.view import View
-from testgrad.engine.grouper import group_realizes
+from testgrad.kernelize.grouper import group_realizes
 from dataclasses import dataclass
 
 @dataclass(frozen=True)
