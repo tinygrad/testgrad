@@ -52,6 +52,9 @@ view_left = merge_views+PatternMatcher([
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
   # remove CONTIGUOUS
   (UPat(Ops.CONTIGUOUS, name="x"), lambda x: x.src[0]),
+  # remove all 1s from stores
+  (UPat(Ops.STORE, src=(UPat(name="buf"), UPat(name="val"))), lambda buf,val:
+   buf.store(val.reshape(ns)) if (ns:=tuple([x for x in val.shape if x != 1])) != val.shape else None)
 ])
 
 kernel_fixup = PatternMatcher([
