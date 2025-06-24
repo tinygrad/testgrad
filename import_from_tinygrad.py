@@ -8,7 +8,7 @@ if len(sys.argv) > 1:
 else:
   FILES = ["dtype.py", "helpers.py",
           # fix reduce gradient
-          #"gradient.py",
+          "gradient.py",
           "device.py",
           "__init__.py",
           # tensor replaces assign with store
@@ -20,12 +20,13 @@ else:
           "runtime/ops_disk.py",
           "runtime/support/elf.py",
           "renderer/__init__.py",
-          #"renderer/cstyle.py",
+          "renderer/cstyle.py",
           "runtime/autogen/libc.py",
           "nn/__init__.py", "nn/optim.py", "nn/state.py", "nn/datasets.py",
           "uop/__init__.py",  "uop/mathtraits.py", "uop/upat.py",
           # changing reduce here
           #"uop/ops.py",
+          # add one rule here
           #"uop/symbolic.py",
           "uop/spec.py",
           "uop/transcendental.py",
@@ -34,7 +35,7 @@ else:
           "shape/view.py",
           "viz/serve.py", "viz/index.html", "viz/js/index.js", "viz/js/worker.js",
           # okay parts of codegen
-          # lowerer removed
+          # lowerer changed
           #"codegen/__init__.py",
           "codegen/devectorizer.py",
           "codegen/expander.py",
