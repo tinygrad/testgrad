@@ -29,6 +29,7 @@ merge_views = PatternMatcher([
 # change reduceop axes and input ShapeTrackers, view gets replaced with a reshape.
 # src->r->view  -->   src->view->r
 def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
+  if r.tag is not None: return None
   # confirm the input is in order
   # TODO: replace this with a UOp that allows for nothing else then remove this
   permute = tuple(i for i in range(len(src.shape)) if i not in r.axis_arg)+r.axis_arg
@@ -44,12 +45,18 @@ def swizzle_reduceop(src:UOp, r:UOp, view:UOp):
   return UOp(Ops.REDUCE_AXIS, r.dtype, (src.view(ShapeTracker(tuple(nv))),),
              (r.arg[0], tuple(range(len(view.shape), len(view.shape) + len(r.axis_arg)))))
 
-view_left = merge_views+PatternMatcher([
+early_view_left = merge_views+PatternMatcher([
   # view before elementwise and buffer ops
   (UPat(Ops.VIEW, src=(UPat({*GroupOp.ALU, Ops.CAST, Ops.BITCAST, Ops.BIND, Ops.VALID}, name="e"),), name="view"),
-   lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src))),
+   lambda e,view: e.replace(src=tuple(s.view(view.st) for s in e.src)) if e.tag is None else None),
   # push a non contiguous ShapeTracker through reduceop
   (UPat(Ops.VIEW, src=(UPat(Ops.REDUCE_AXIS, src=(UPat.var("src"),), name="r"),), name="view"), swizzle_reduceop),
+  # remove all 1s from view inputs
+  #(UPat(Ops.VIEW, src=(UPat(name="val"),), name="view"), lambda val,view:
+  # val.reshape(ns).view(view.arg) if (ns:=tuple([x for x in val.shape if x != 1])) != val.shape else None)
+])
+
+view_left = early_view_left+PatternMatcher([
   # remove CONTIGUOUS
   (UPat(Ops.CONTIGUOUS, name="x"), lambda x: x.src[0]),
   # remove all 1s from stores
@@ -153,9 +160,20 @@ early_rules = PatternMatcher([
 
 remove_tags = PatternMatcher([(UPat(GroupOp.All, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None)])
 
+tag_children = PatternMatcher([
+  (UPat(GroupOp.All, name="x"), lambda ctx,x: x.rtag(1) if x in ctx and len(ctx[x]) > 1 else None )
+])
+
 @track_rewrites(name=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   tensor_map = graph_rewrite_map(sink, merge_views+early_rules, name="merge views")
+
+  """
+  children_map = tensor_map[sink].get_children_map()
+  tensor_map = graph_rewrite_map(tensor_map[sink], tag_children, ctx=children_map, input_map=tensor_map, name="tag children", bottom_up=True)
+  tensor_map = graph_rewrite_map(tensor_map[sink], early_view_left, input_map=tensor_map, name="early left")
+  tensor_map = graph_rewrite_map(tensor_map[sink], remove_tags, input_map=tensor_map, name="remove_tags")
+  """
 
   # determine the realizes before moving the views
   force_realize = group_realizes(tensor_map[sink])
@@ -167,4 +185,5 @@ def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   tensor_map = graph_rewrite_map(tensor_map[sink], kernelize, input_map=tensor_map, name="create kernels")
 
   graph_rewrite(tensor_map[sink], PatternMatcher([]), name="output")
+  # TODO: check the tensor_map for cycles
   return tensor_map
