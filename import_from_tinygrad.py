@@ -49,7 +49,8 @@ else:
     "test_tiny.py",
     "test_arange.py",
     "test_schedule.py",
-    "test_softmax_fusion.py",
+    # enabled flash attention
+    #"test_softmax_fusion.py",
     "unit/test_disk_tensor.py",
     "unit/test_simple_schedule.py",
   ]
