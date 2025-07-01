@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from testgrad.dtype import dtypes
 from testgrad.uop.ops import PatternMatcher, UPat, Ops, UOp, graph_rewrite
-from testgrad.shape.shapetracker import ShapeTracker
 
 @dataclass
 class LowererContext:
