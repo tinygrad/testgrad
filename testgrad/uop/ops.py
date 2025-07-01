@@ -259,6 +259,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
     axis = tuple(sorted([x for x in axis if resolve(self.shape[x] != 1)]))
     if len(axis) == 0: return self
     # move any non reduce axis before the first reduce axis
+    """
     move_early = [i for i in range(axis[0], len(self.shape)) if i not in axis and resolve(self.shape[i] != 1)]
     if move_early:
       permute = tuple(range(axis[0])) + tuple(move_early) + tuple([i for i in range(axis[0], len(self.shape)) if i not in move_early])
@@ -267,6 +268,9 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
       assert len(axis) == len(new_axis)
     else:
       ret, new_axis = self, axis
+    """
+    ret = self.permute(tuple([x for x in range(len(self.shape)) if x not in axis])+axis)
+    new_axis = tuple(range(len(self.shape)-len(axis), len(self.shape)))
     ret = UOp(Ops.REDUCE_AXIS, self.dtype, (ret,), (op, new_axis))
     return ret.reshape(tuple([x if i not in axis else 1 for i,x in enumerate(self.shape)]))
   def assign(self, x:UOp): return UOp(Ops.ASSIGN, self.dtype, (self,x))
@@ -376,7 +380,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
     return dsrcs[0]._device if len(dsrcs:=[x for x in self.src if x._device is not None]) != 0 else None
   @property
   def buf_uop(self) -> UOp:
-    if self.op is Ops.BUFFER: return self
+    if self.op in {Ops.BUFFER, Ops.BUFFER_VIEW}: return self
     if self.op is Ops.MSELECT: return self.src[0].buf_uop.mselect(self.arg)
     if self.op is Ops.MSTACK: return UOp(Ops.MSTACK, self.dtype, src=tuple(x.buf_uop for x in self.src))
     assert self.op is Ops.STORE, f"must be ASSIGN {self.op}"
@@ -397,6 +401,7 @@ class UOp(MathTrait, metaclass=UOpMetaClass):
       assert all_same([x.size for x in ret.bufs]) and all_same([x.dtype for x in ret.bufs]), "multibuffers mismatch buffers"
       return ret
     if self.op is Ops.STORE: return self.src[0].buffer
+    if self.op is Ops.BUFFER_VIEW: return self.src[0].buffer.view(self.arg[0], self.dtype, self.arg[1])
     assert self.op is Ops.BUFFER, f"must be BUFFER {self.op}"
     if (cret:=buffers.get(self)) is not None: return cret
     rdtype = self.dtype if isinstance(self.dtype, ImageDType) else self.dtype.base
