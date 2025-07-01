@@ -162,6 +162,15 @@ early_rules = PatternMatcher([
 
 remove_tags = PatternMatcher([(UPat(GroupOp.All, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None)])
 
+# TODO: fuse doesn't stop at const
+do_fuse = PatternMatcher([
+  # FUSE on GBARRIER removes GBARRIER
+  (UPat(Ops.GBARRIER, name="x").fuse(), lambda x: x.src[0].fuse()),
+
+  # push FUSE through to srcs (removes it from DEVICE, BUFFER, CONST, etc...)
+  (UPat(Ops.FUSE, name="x"), lambda x: x.src[0].replace(src=tuple(y.fuse() for y in x.src[0].src))),
+])
+
 @track_rewrites(name=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   tensor_map = graph_rewrite_map(sink, merge_views+early_rules, name="merge views")
@@ -170,6 +179,7 @@ def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   force_realize = group_realizes(tensor_map[sink])
   tensor_map = graph_rewrite_map(tensor_map[sink], add_gbarrier, ctx=force_realize, input_map=tensor_map, bottom_up=True, name="add gbarriers")
   tensor_map = graph_rewrite_map(tensor_map[sink], remove_tags, input_map=tensor_map, name="remove_tags")
+  tensor_map = graph_rewrite_map(tensor_map[sink], do_fuse, input_map=tensor_map, name="do_fuse")
 
   tensor_map = graph_rewrite_map(tensor_map[sink], gbarrier_to_buffer, input_map=tensor_map, name="gbarrier to buffers")
   tensor_map = graph_rewrite_map(tensor_map[sink], view_left, input_map=tensor_map, name="views left")
