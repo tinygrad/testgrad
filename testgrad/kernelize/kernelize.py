@@ -99,7 +99,9 @@ def do_kernelize(x:UOp):
   for i,y in enumerate(srcs):
     dg = UOp(Ops.DEFINE_GLOBAL, y.dtype.ptr(y.buffer.size), arg=len(bufs_replace))
     assert y not in bufs_replace
-    bufs_replace[y] = dg.view(ShapeTracker.from_shape((y.buffer.size,))).load() if i != 0 else dg.load()
+    # NOTE: the store view won't be removed because a DEFINE_GLOBAL doesn't have a shape
+    bufs_replace[y] = dg.view(ShapeTracker.from_shape((y.buffer.size,))).load() if i != 0 else \
+                      dg.view(ShapeTracker.from_shape(x.src[1].shape)).load()
   bufs_replace.update(const_replace)
   bufs_replace.update(view_replace)
   if len(unbound_dicts):
@@ -160,20 +162,9 @@ early_rules = PatternMatcher([
 
 remove_tags = PatternMatcher([(UPat(GroupOp.All, name="x"), lambda x: x.replace(tag=None) if x.tag is not None else None)])
 
-tag_children = PatternMatcher([
-  (UPat(GroupOp.All, name="x"), lambda ctx,x: x.rtag(1) if x in ctx and len(ctx[x]) > 1 else None )
-])
-
 @track_rewrites(name=lambda big_sink,ret: f"Schedule {pluralize('Kernel',len([u for u in ret[big_sink].toposort() if u.op is Ops.KERNEL]))}")
 def get_kernelize_map(sink:UOp) -> dict[UOp, UOp]:
   tensor_map = graph_rewrite_map(sink, merge_views+early_rules, name="merge views")
-
-  """
-  children_map = tensor_map[sink].get_children_map()
-  tensor_map = graph_rewrite_map(tensor_map[sink], tag_children, ctx=children_map, input_map=tensor_map, name="tag children", bottom_up=True)
-  tensor_map = graph_rewrite_map(tensor_map[sink], early_view_left, input_map=tensor_map, name="early left")
-  tensor_map = graph_rewrite_map(tensor_map[sink], remove_tags, input_map=tensor_map, name="remove_tags")
-  """
 
   # determine the realizes before moving the views
   force_realize = group_realizes(tensor_map[sink])

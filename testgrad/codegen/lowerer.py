@@ -8,14 +8,13 @@ class LowererContext:
   current_range: list[UOp]=field(default_factory=list)
   range_number: int = 0
 
-def add_store_indexing(ctx:LowererContext, store:UOp):
-  # this is always contiguous
-  st = ShapeTracker.from_shape(store.src[1].shape)
+def add_store_indexing(ctx:LowererContext, store:UOp, buf:UOp, view:UOp):
+  assert store.src[1].shape == view.shape, f"shape mismatch on store {store.src[1].shape} != {view.shape}"
   # create the output range
-  ctx.current_range = [UOp.range(dtypes.int, s, i) for i,s in enumerate(st.shape)]
+  ctx.current_range = [UOp.range(dtypes.int, s, i) for i,s in enumerate(view.st.shape)]
   ctx.range_number = len(ctx.current_range)
-  idx, valid = st.to_indexed_uops(ctx.current_range)
-  return store.replace(src=(store.src[0].index(idx, valid),)+store.src[1:])
+  idx, valid = view.st.to_indexed_uops(ctx.current_range)
+  return store.replace(src=(buf.index(idx, valid),)+store.src[1:])
 
 def add_reduce_indexing(ctx:LowererContext, red:UOp):
   more_shape = red.src[0].shape[len(ctx.current_range):]
@@ -36,7 +35,7 @@ def view_buffer(ctx:LowererContext, view:UOp, buf:UOp):
   return buf.index(idx, valid).load()
 
 pm_lowerer = PatternMatcher([
-  (UPat(Ops.STORE, src=(UPat(Ops.DEFINE_GLOBAL), UPat()), name="store"), add_store_indexing),
+  (UPat(Ops.STORE, src=(UPat(Ops.DEFINE_GLOBAL, name="buf").view(name="view"), UPat()), name="store"), add_store_indexing),
   (UPat(Ops.REDUCE_AXIS, name="red"), add_reduce_indexing),
   (UPat(Ops.VIEW, src=(UPat.cvar("c"),), name="view"), view_const),
   (UPat(Ops.VIEW, src=(UPat(Ops.DEFINE_GLOBAL, name="buf"),), name="view").load(), view_buffer),
